@@ -1,0 +1,94 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.kecong</groupId>
+        <artifactId>kecong-opentcs-driver</artifactId>
+        <version>1.0.0</version>
+    </parent>
+
+    <artifactId>kecong-opentcs-adapter</artifactId>
+    <packaging>jar</packaging>
+
+    <name>Kecong openTCS Comm Adapter</name>
+    <description>openTCS VehicleCommAdapter for Kecong AGV controllers. Depends on the protocol library and openTCS API.</description>
+
+    <properties>
+        <opentcs.version>5.11.0</opentcs.version>
+    </properties>
+
+    <dependencies>
+        <!-- Protocol library -->
+        <dependency>
+            <groupId>com.kecong</groupId>
+            <artifactId>kecong-opentcs-protocol</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!-- openTCS API -->
+        <dependency>
+            <groupId>org.opentcs</groupId>
+            <artifactId>opentcs-api-internal</artifactId>
+            <version>${opentcs.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.opentcs</groupId>
+            <artifactId>opentcs-kernel</artifactId>
+            <version>${opentcs.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <version>3.0.2</version>
+        </dependency>
+
+        <!-- Test dependencies -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
