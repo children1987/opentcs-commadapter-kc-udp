@@ -1,6 +1,11 @@
 package com.kecong.opentcs.protocol;
 
+import com.kecong.opentcs.protocol.model.MagneticNavTask;
+import com.kecong.opentcs.protocol.model.MagneticNavTask.MagneticControl;
+import com.kecong.opentcs.protocol.model.MagneticNavTask.MagneticRelocalize;
 import com.kecong.opentcs.protocol.model.NavigationTask;
+import com.kecong.opentcs.protocol.model.QrNavigationTask;
+import com.kecong.opentcs.protocol.model.TrafficResource;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskAction;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPath;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPoint;

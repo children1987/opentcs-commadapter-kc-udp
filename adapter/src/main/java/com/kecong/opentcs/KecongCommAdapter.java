@@ -67,6 +67,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     private final KecongVehicleProcessModel processModel;
     private final String controllerHost;
+    private final String varHost;
     private final int navPort;
     private final int varPort;
     private final byte[] authCode;
@@ -90,10 +91,12 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                              String controllerHost,
                              int navPort,
                              int varPort,
+                             String varHost,
                              String authCodeStr,
                              int pollIntervalMs) {
         this.processModel = Objects.requireNonNull(processModel, "processModel");
         this.controllerHost = controllerHost != null ? controllerHost : DEFAULT_HOST;
+        this.varHost = varHost != null ? varHost : DEFAULT_HOST;
         this.navPort = navPort > 0 ? navPort : DEFAULT_NAV_PORT;
         this.varPort = varPort > 0 ? varPort : DEFAULT_VAR_PORT;
         this.authCode = authCodeStr != null
@@ -108,7 +111,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Convenience constructor with defaults.
      */
     public KecongCommAdapter(KecongVehicleProcessModel processModel, String authCodeStr) {
-        this(processModel, DEFAULT_HOST, DEFAULT_NAV_PORT, DEFAULT_VAR_PORT, authCodeStr, DEFAULT_POLL_INTERVAL);
+        this(processModel, DEFAULT_HOST, DEFAULT_NAV_PORT, DEFAULT_VAR_PORT, DEFAULT_HOST, authCodeStr, DEFAULT_POLL_INTERVAL);
     }
 
     // ===== VehicleCommAdapter interface =====
@@ -117,8 +120,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     public void initialize() {
         if (initialized) return;
 
-        LOG.info("Initializing KecongCommAdapter: host={}, navPort={}, varPort={}, pollInterval={}ms",
-                controllerHost, navPort, varPort, pollIntervalMs);
+        LOG.info("Initializing KecongCommAdapter: host={}, navPort={}, varHost={}, varPort={}, pollInterval={}ms",
+                controllerHost, navPort, varHost, varPort, pollIntervalMs);
 
         this.scheduler = Executors.newScheduledThreadPool(2, r -> {
             Thread t = new Thread(r, "kecong-poller");
@@ -147,7 +150,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try {
             // Open both UDP channels
             navChannel = new KecongUdpChannel(controllerHost, navPort, authCode, pollIntervalMs * 2);
-            varChannel = new KecongUdpChannel(controllerHost, varPort, authCode, pollIntervalMs * 2);
+            varChannel = new KecongUdpChannel(varHost, varPort, authCode, pollIntervalMs * 2);
 
             // Start status polling
             pollFuture = scheduler.scheduleAtFixedRate(

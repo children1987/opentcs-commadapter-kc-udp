@@ -1,6 +1,9 @@
 package com.kecong.opentcs.protocol;
 
+import com.kecong.opentcs.protocol.model.MagneticNavTask;
+import com.kecong.opentcs.protocol.model.QrNavigationTask;
 import com.kecong.opentcs.protocol.model.RobotStatus;
+import com.kecong.opentcs.protocol.model.TrafficResource;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 

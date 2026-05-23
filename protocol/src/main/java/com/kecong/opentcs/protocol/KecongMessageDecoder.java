@@ -1,6 +1,9 @@
 package com.kecong.opentcs.protocol;
 
+import com.kecong.opentcs.protocol.model.MagneticNavTask;
+import com.kecong.opentcs.protocol.model.QrNavigationTask;
 import com.kecong.opentcs.protocol.model.RobotStatus;
+import com.kecong.opentcs.protocol.model.TrafficResource;
 import com.kecong.opentcs.protocol.model.RobotStatus.AbnormalEvent;
 import com.kecong.opentcs.protocol.model.RobotStatus.ActionStatus;
 import com.kecong.opentcs.util.ByteBufferUtils;
@@ -96,6 +99,36 @@ public class KecongMessageDecoder {
      * @param data response data payload
      * @return true if loaded, false if unloaded
      */
+    /**
+     * Decode a 0x70 query traffic request response from the robot.
+     *
+     * @param data response data payload
+     * @return decoded traffic resource, or empty if no request
+     */
+    public static TrafficResource decodeTrafficRequest(byte[] data) {
+        return TrafficResource.fromQueryResponse(data);
+    }
+
+    /**
+     * Decode a 0xF5 long-path QR navigation task response (echo).
+     *
+     * @param data response data payload
+     * @return decoded task metadata, or null if data invalid
+     */
+    public static QrNavigationTask decodeQrLongPathTaskResponse(byte[] data) {
+        return QrNavigationTask.fromF5Response(data);
+    }
+
+    /**
+     * Decode a 0xE2 magnetic navigation status response.
+     *
+     * @param data response data payload
+     * @return decoded magnetic status, or null if data invalid
+     */
+    public static MagneticNavTask.MagneticStatus decodeMagneticStatus(byte[] data) {
+        return MagneticNavTask.fromE2Response(data);
+    }
+
     public static boolean decodeCargoStatus(byte[] data) {
         if (data == null || data.length == 0) {
             return false;

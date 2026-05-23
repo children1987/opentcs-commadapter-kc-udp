@@ -67,6 +67,7 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
         String host = getProperty(vehicle, "host", "192.168.100.178");
         int navPort = Integer.parseInt(getProperty(vehicle, "port", "17804"));
         int varPort = Integer.parseInt(getProperty(vehicle, "varPort", "17800"));
+        String varHost = getProperty(vehicle, "varHost", host);
         String authCode = getProperty(vehicle, "authCode", "");
         int pollInterval = Integer.parseInt(getProperty(vehicle, "pollInterval", "100"));
 
@@ -74,7 +75,7 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
             LOG.warn("No authCode configured for vehicle '{}', driver may not work", vehicle.getName());
         }
 
-        return new KecongCommAdapter(processModel, host, navPort, varPort, authCode, pollInterval);
+        return new KecongCommAdapter(processModel, host, navPort, varPort, varHost, authCode, pollInterval);
     }
 
     @Nonnull

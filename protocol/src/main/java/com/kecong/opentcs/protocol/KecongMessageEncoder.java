@@ -1,6 +1,11 @@
 package com.kecong.opentcs.protocol;
 
+import com.kecong.opentcs.protocol.model.MagneticNavTask;
+import com.kecong.opentcs.protocol.model.MagneticNavTask.MagneticControl;
+import com.kecong.opentcs.protocol.model.MagneticNavTask.MagneticRelocalize;
 import com.kecong.opentcs.protocol.model.NavigationTask;
+import com.kecong.opentcs.protocol.model.QrNavigationTask;
+import com.kecong.opentcs.protocol.model.TrafficResource;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskAction;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPath;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPoint;
@@ -178,6 +183,69 @@ public class KecongMessageEncoder {
         buf.flip();
         buf.get(result);
         return result;
+    }
+
+    /**
+     * Encode a 0x71 traffic management notify result.
+     *
+     * @param resource the traffic resource result to send to the robot
+     * @return encoded byte array
+     */
+    public static byte[] encodeTrafficResult(TrafficResource resource) {
+        if (resource == null) {
+            return new byte[0];
+        }
+        return resource.toNotifyBytes();
+    }
+
+    /**
+     * Encode a 0xF1 simple QR code navigation task.
+     */
+    public static byte[] encodeQrNavTask(QrNavigationTask task) {
+        if (task == null) {
+            return new byte[0];
+        }
+        return task.toF1Bytes();
+    }
+
+    /**
+     * Encode a 0xF5 long-path QR code navigation task.
+     */
+    public static byte[] encodeQrLongPathTask(QrNavigationTask task) {
+        if (task == null) {
+            return new byte[0];
+        }
+        return task.toF5Bytes();
+    }
+
+    /**
+     * Encode a 0xE0 magnetic navigation task download.
+     */
+    public static byte[] encodeMagneticTask(MagneticNavTask task) {
+        if (task == null) {
+            return new byte[0];
+        }
+        return task.toE0Bytes();
+    }
+
+    /**
+     * Encode a 0xE1 magnetic navigation task control command.
+     */
+    public static byte[] encodeMagneticControl(MagneticControl control) {
+        if (control == null) {
+            return new byte[0];
+        }
+        return control.toBytes();
+    }
+
+    /**
+     * Encode a 0xE3 magnetic navigation vehicle relocation command.
+     */
+    public static byte[] encodeMagneticRelocalize(MagneticRelocalize relocalize) {
+        if (relocalize == null) {
+            return new byte[0];
+        }
+        return relocalize.toBytes();
     }
 
     /**
