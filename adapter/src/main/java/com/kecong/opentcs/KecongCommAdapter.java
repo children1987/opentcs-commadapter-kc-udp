@@ -40,7 +40,8 @@ import java.util.stream.Collectors;
  * The driver reads these properties from the vehicle properties or system properties:
  * <ul>
  *   <li>{@code kecong:host} — controller IP address (default: 192.168.100.178)</li>
- *   <li>{@code kecong:port} — controller port (default: 17804)</li>
+ *   <li>{@code kecong:port} — navigation UDP port (default: 17804)</li>
+ *   <li>{@code kecong:varPort} — variable/QR/magnetic UDP port (default: 17800)</li>
  *   <li>{@code kecong:authCode} — protocol auth code (required, contact Kecong sales)</li>
  *   <li>{@code kecong:pollInterval} — status poll interval in ms (default: 100)</li>
  * </ul>
@@ -52,7 +53,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     /** Default controller IP */
     private static final String DEFAULT_HOST = "192.168.100.178";
     /** Default navigation port */
-    private static final int DEFAULT_PORT = 17804;
+    private static final int DEFAULT_NAV_PORT = 17804;
+    /** Default variable/QR/magnetic port */
+    private static final int DEFAULT_VAR_PORT = 17800;
     /** Default status polling interval (ms) */
     private static final int DEFAULT_POLL_INTERVAL = 100;
     /** Subscription duration (ms) — 60 seconds, refreshed periodically */
@@ -64,11 +67,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     private final KecongVehicleProcessModel processModel;
     private final String controllerHost;
-    private final int controllerPort;
+    private final int navPort;
+    private final int varPort;
     private final byte[] authCode;
     private final int pollIntervalMs;
 
-    private KecongUdpChannel channel;
+    private KecongUdpChannel navChannel;
+    private KecongUdpChannel varChannel;
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> pollFuture;
     private ScheduledFuture<?> subscriptionFuture;
@@ -83,12 +88,14 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String controllerHost,
-                             int controllerPort,
+                             int navPort,
+                             int varPort,
                              String authCodeStr,
                              int pollIntervalMs) {
         this.processModel = Objects.requireNonNull(processModel, "processModel");
         this.controllerHost = controllerHost != null ? controllerHost : DEFAULT_HOST;
-        this.controllerPort = controllerPort > 0 ? controllerPort : DEFAULT_PORT;
+        this.navPort = navPort > 0 ? navPort : DEFAULT_NAV_PORT;
+        this.varPort = varPort > 0 ? varPort : DEFAULT_VAR_PORT;
         this.authCode = authCodeStr != null
                 ? Arrays.copyOf(authCodeStr.getBytes(java.nio.charset.StandardCharsets.US_ASCII), 16)
                 : new byte[16];
@@ -101,7 +108,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Convenience constructor with defaults.
      */
     public KecongCommAdapter(KecongVehicleProcessModel processModel, String authCodeStr) {
-        this(processModel, DEFAULT_HOST, DEFAULT_PORT, authCodeStr, DEFAULT_POLL_INTERVAL);
+        this(processModel, DEFAULT_HOST, DEFAULT_NAV_PORT, DEFAULT_VAR_PORT, authCodeStr, DEFAULT_POLL_INTERVAL);
     }
 
     // ===== VehicleCommAdapter interface =====
@@ -110,8 +117,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     public void initialize() {
         if (initialized) return;
 
-        LOG.info("Initializing KecongCommAdapter: host={}:{}, pollInterval={}ms",
-                controllerHost, controllerPort, pollIntervalMs);
+        LOG.info("Initializing KecongCommAdapter: host={}, navPort={}, varPort={}, pollInterval={}ms",
+                controllerHost, navPort, varPort, pollIntervalMs);
 
         this.scheduler = Executors.newScheduledThreadPool(2, r -> {
             Thread t = new Thread(r, "kecong-poller");
@@ -138,8 +145,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         LOG.info("Enabling KecongCommAdapter for vehicle '{}'", getName());
 
         try {
-            // Open UDP channel
-            channel = new KecongUdpChannel(controllerHost, controllerPort, authCode, pollIntervalMs * 2);
+            // Open both UDP channels
+            navChannel = new KecongUdpChannel(controllerHost, navPort, authCode, pollIntervalMs * 2);
+            varChannel = new KecongUdpChannel(controllerHost, varPort, authCode, pollIntervalMs * 2);
 
             // Start status polling
             pollFuture = scheduler.scheduleAtFixedRate(
@@ -175,9 +183,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             subscriptionFuture.cancel(false);
             subscriptionFuture = null;
         }
-        if (channel != null) {
-            channel.close();
-            channel = null;
+        if (navChannel != null) {
+            navChannel.close();
+            navChannel = null;
+        }
+        if (varChannel != null) {
+            varChannel.close();
+            varChannel = null;
         }
 
         // Update process model
@@ -228,7 +240,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
             // Send navigation task
             byte[] taskData = KecongMessageEncoder.encodeNavigationTask(task);
-            boolean success = channel.sendAndVerify(KecongCommandCode.CMD_HYBRID_NAV_TASK, taskData);
+            boolean success = navChannel.sendAndVerify(KecongCommandCode.CMD_HYBRID_NAV_TASK, taskData);
 
             if (success) {
                 LOG.info("Navigation task dispatched: orderId={}, taskKey={}, {} points",
@@ -281,7 +293,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Subscribe to robot status (0xB1) with AGV state and cargo state.
      */
     private void subscribe() {
-        if (channel == null || channel.isClosed()) return;
+        if (navChannel == null || navChannel.isClosed()) return;
 
         try {
             byte[] subData = KecongMessageEncoder.encodeSubscription(
@@ -291,7 +303,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                     false,  // periodic report
                     subscriptionUuid
             );
-            boolean ok = channel.sendAndVerify(KecongCommandCode.CMD_SUBSCRIPTION, subData);
+            boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_SUBSCRIPTION, subData);
             if (ok) {
                 LOG.debug("Subscription registered: {}", subscriptionUuid);
             } else {
@@ -306,7 +318,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Refresh subscription before it expires.
      */
     private void refreshSubscription() {
-        if (!enabled || channel == null || channel.isClosed()) return;
+        if (!enabled || navChannel == null || navChannel.isClosed()) return;
         subscribe();
     }
 
@@ -314,11 +326,11 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Perform auto-mode initialization sequence.
      */
     private boolean initAutoMode() {
-        if (channel == null || channel.isClosed()) return false;
+        if (navChannel == null || navChannel.isClosed()) return false;
 
         try {
             // 1. Query robot status (0xAF)
-            byte[] statusData = channel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+            byte[] statusData = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
             if (statusData == null) {
                 LOG.debug("Failed to query robot status during init");
                 return false;
@@ -338,17 +350,17 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             // 3. Switch to manual mode → manual position → confirm position → switch to auto
             // Step: NaviControl = 0 (manual)
             byte[] manualModeData = encodeVariableWrite("NaviControl", new byte[]{0, 0, 0, 0});
-            channel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, manualModeData);
+            varChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, manualModeData);
 
             // Step: Manual position (0x14)
-            channel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, new byte[0]);
+            navChannel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, new byte[0]);
 
             // Wait briefly
             try { Thread.sleep(200); } catch (InterruptedException ignored) {}
 
             // Step: Query and wait for localization complete
             for (int i = 0; i < 30; i++) {  // max ~6 seconds
-                statusData = channel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+                statusData = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
                 if (statusData != null) {
                     status = KecongMessageDecoder.decodeRobotStatus(statusData);
                     if (status != null && status.getLocalizationStatus() == 3) {
@@ -359,11 +371,11 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             }
 
             // Confirm position (0x1F)
-            channel.sendAndVerify(KecongCommandCode.CMD_CONFIRM_POSITION, new byte[0]);
+            navChannel.sendAndVerify(KecongCommandCode.CMD_CONFIRM_POSITION, new byte[0]);
 
             // Switch to auto mode: NaviControl = 1
             byte[] autoModeData = encodeVariableWrite("NaviControl", new byte[]{1, 0, 0, 0});
-            channel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, autoModeData);
+            varChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, autoModeData);
 
             LOG.info("Auto mode initialization complete");
             processModel.setAutoReady(true);
@@ -379,11 +391,11 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Poll robot status (0xAF) and update process model.
      */
     private void pollRobotStatus() {
-        if (!enabled || channel == null || channel.isClosed()) return;
+        if (!enabled || navChannel == null || navChannel.isClosed()) return;
 
         try {
             // Always query 0xAF before any navigation command (protocol requirement)
-            byte[] statusData = channel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+            byte[] statusData = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
             if (statusData == null) {
                 // On first timeout, try init auto mode
                 if (!processModel.isAutoReady()) {
@@ -411,7 +423,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             processModel.setBatteryPercent(status.getBatteryPercent());
             processModel.setChargeStatus(status.getChargeStatus());
             processModel.setVehicleEnergyLevel((int) (status.getBatteryPercent() * 100));
-            processModel.setCmdSequence(channel.getSequenceNumber());
+            processModel.setCmdSequence(navChannel.getSequenceNumber());
 
             // Handle errors
             if (status.hasError()) {
@@ -598,8 +610,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      */
     private RobotStatus getLatestStatus() {
         try {
-            if (channel == null || channel.isClosed()) return null;
-            byte[] data = channel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+            if (navChannel == null || navChannel.isClosed()) return null;
+            byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
             if (data == null) return null;
             return KecongMessageDecoder.decodeRobotStatus(data);
         } catch (IOException e) {

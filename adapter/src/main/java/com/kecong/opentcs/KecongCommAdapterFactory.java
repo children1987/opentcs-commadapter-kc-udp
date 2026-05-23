@@ -16,7 +16,8 @@ import java.util.Map;
  * <p>Vehicle properties used for configuration:
  * <ul>
  *   <li>{@code kecong:host} — Controller IP address (default: 192.168.100.178)</li>
- *   <li>{@code kecong:port} — Controller UDP port (default: 17804)</li>
+ *   <li>{@code kecong:port} — Navigation UDP port (default: 17804)</li>
+ *   <li>{@code kecong:varPort} — Variable/QR/Magnetic UDP port (default: 17800)</li>
  *   <li>{@code kecong:authCode} — Protocol auth code (required)</li>
  *   <li>{@code kecong:pollInterval} — Status polling interval in ms (default: 100)</li>
  * </ul>
@@ -64,7 +65,8 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
         KecongVehicleProcessModel processModel = new KecongVehicleProcessModel(vehicle);
 
         String host = getProperty(vehicle, "host", "192.168.100.178");
-        int port = Integer.parseInt(getProperty(vehicle, "port", "17804"));
+        int navPort = Integer.parseInt(getProperty(vehicle, "port", "17804"));
+        int varPort = Integer.parseInt(getProperty(vehicle, "varPort", "17800"));
         String authCode = getProperty(vehicle, "authCode", "");
         int pollInterval = Integer.parseInt(getProperty(vehicle, "pollInterval", "100"));
 
@@ -72,7 +74,7 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
             LOG.warn("No authCode configured for vehicle '{}', driver may not work", vehicle.getName());
         }
 
-        return new KecongCommAdapter(processModel, host, port, authCode, pollInterval);
+        return new KecongCommAdapter(processModel, host, navPort, varPort, authCode, pollInterval);
     }
 
     @Nonnull
