@@ -1,5 +1,7 @@
 # Kecong openTCS Vehicle Driver
 
+[![codecov](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp/branch/master/graph/badge.svg)](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp)
+
 openTCS Vehicle Driver (CommAdapter) for **Kecong (科聪) MRC/FRC series AGV controllers**, implementing the **Kecong UDP Interface Protocol V2.0 (xRobotProtocol)**.
 
 ## Overview

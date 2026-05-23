@@ -41,6 +41,16 @@ jobs:
           name: jacoco-coverage-report
           path: protocol/target/site/jacoco/
 
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v5
+        if: matrix.java == '17'
+        with:
+          files: protocol/target/site/jacoco/jacoco.xml
+          flags: protocol
+          fail_ci_if_error: false
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Verify Coverage Threshold (85%)
         if: matrix.java == '17'
         run: |
