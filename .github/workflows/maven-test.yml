@@ -46,6 +46,7 @@ jobs:
         if: matrix.java == '17'
         with:
           files: protocol/target/site/jacoco/jacoco.xml
+          test_results: protocol/target/surefire-reports/*.xml
           flags: protocol
           fail_ci_if_error: false
         env:
