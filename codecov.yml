@@ -1,0 +1,48 @@
+# Codecov configuration for opentcs-commadapter-kc-udp
+# https://docs.codecov.com/docs/codecov-yaml
+
+comment:
+  layout: "reach, diff, flags, components"
+  behavior: default
+  require_changes: false
+
+coverage:
+  status:
+    project:
+      default:
+        target: 95%
+        threshold: 1%
+    patch:
+      default:
+        target: 90%
+
+component_management:
+  individual_components:
+    - component_id: encoder
+      name: Encoder
+      paths:
+        - protocol/**/KecongMessageEncoder.java
+
+    - component_id: decoder
+      name: Decoder
+      paths:
+        - protocol/**/KecongMessageDecoder.java
+
+    - component_id: frame
+      name: Protocol Frame
+      paths:
+        - protocol/**/KecongProtocolFrame.java
+        - protocol/**/KecongCommandCode.java
+        - protocol/**/KecongActionType.java
+        - protocol/**/KecongExecutionCode.java
+        - protocol/**/KecongUdpChannel.java
+
+    - component_id: models
+      name: Data Models
+      paths:
+        - protocol/**/model/**
+
+    - component_id: util
+      name: Utilities
+      paths:
+        - protocol/**/util/**
