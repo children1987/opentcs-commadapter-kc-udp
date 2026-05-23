@@ -50,8 +50,10 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     private static final Logger LOG = LoggerFactory.getLogger(KecongCommAdapter.class);
 
-    /** Default controller IP */
+    /** Default controller IP (laser navigation → algorithm unit) */
     private static final String DEFAULT_HOST = "192.168.100.178";
+    /** Default variable/QR/magnetic controller IP (→ logic unit) */
+    private static final String DEFAULT_VAR_HOST = "192.168.100.200";
     /** Default navigation port */
     private static final int DEFAULT_NAV_PORT = 17804;
     /** Default variable/QR/magnetic port */
@@ -96,7 +98,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                              int pollIntervalMs) {
         this.processModel = Objects.requireNonNull(processModel, "processModel");
         this.controllerHost = controllerHost != null ? controllerHost : DEFAULT_HOST;
-        this.varHost = varHost != null ? varHost : DEFAULT_HOST;
+        this.varHost = varHost != null ? varHost : DEFAULT_VAR_HOST;
         this.navPort = navPort > 0 ? navPort : DEFAULT_NAV_PORT;
         this.varPort = varPort > 0 ? varPort : DEFAULT_VAR_PORT;
         this.authCode = authCodeStr != null
@@ -111,7 +113,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Convenience constructor with defaults.
      */
     public KecongCommAdapter(KecongVehicleProcessModel processModel, String authCodeStr) {
-        this(processModel, DEFAULT_HOST, DEFAULT_NAV_PORT, DEFAULT_VAR_PORT, DEFAULT_HOST, authCodeStr, DEFAULT_POLL_INTERVAL);
+        this(processModel, DEFAULT_HOST, DEFAULT_NAV_PORT, DEFAULT_VAR_PORT, DEFAULT_VAR_HOST, authCodeStr, DEFAULT_POLL_INTERVAL);
     }
 
     // ===== VehicleCommAdapter interface =====

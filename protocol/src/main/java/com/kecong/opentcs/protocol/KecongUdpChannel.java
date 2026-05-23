@@ -33,8 +33,10 @@ public class KecongUdpChannel implements AutoCloseable {
     public static final int DEFAULT_NAV_PORT = 17804;
     /** Default variable operations port */
     public static final int DEFAULT_VAR_PORT = 17800;
-    /** Default controller IP (laser navigation, direct connect) */
+    /** Default controller IP (laser navigation → algorithm unit, direct connect) */
     public static final String DEFAULT_CONTROLLER_IP = "192.168.100.178";
+    /** Default variable/QR/magnetic controller IP (→ logic unit) */
+    public static final String DEFAULT_VAR_CONTROLLER_IP = "192.168.100.200";
 
     private final InetAddress controllerAddress;
     private final int controllerPort;

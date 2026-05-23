@@ -86,10 +86,10 @@ For each Kecong AGV, add these properties in the openTCS plant model:
 | Property | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `kecong:authCode` | **Yes** | — | Protocol auth code (contact Kecong sales) |
-| `kecong:host` | No | `192.168.100.178` | Controller IP address |
+| `kecong:host` | No | `192.168.100.178` | Laser/hybrid navigation IP (algorithm unit) |
 | `kecong:port` | No | `17804` | Navigation UDP port (hybrid/laser/status) |
-| `kecong:varHost` | No | same as `host` | Variable/QR/Magnetic controller IP (defaults to host) |
-| `kecong:varPort` | No | `17800` | Variable/QR/Magnetic UDP port |
+| `kecong:varHost` | No | `192.168.100.200` | QR/magnetic/variable operations IP (logic unit) |
+| `kecong:varPort` | No | `17800` | QR/magnetic/variable UDP port |
 | `kecong:pollInterval` | No | `100` | Status poll interval (ms) |
 
 ### 5. Point Name Convention
