@@ -85,6 +85,7 @@ For each Kecong AGV, add these properties in the openTCS plant model:
 | `kecong:authCode` | **Yes** | — | Protocol auth code (contact Kecong sales) |
 | `kecong:host` | No | `192.168.100.178` | Controller IP address |
 | `kecong:port` | No | `17804` | Navigation UDP port (hybrid/laser/status) |
+| `kecong:varHost` | No | same as `host` | Variable/QR/Magnetic controller IP (defaults to host) |
 | `kecong:varPort` | No | `17800` | Variable/QR/Magnetic UDP port |
 | `kecong:pollInterval` | No | `100` | Status poll interval (ms) |
 
@@ -298,6 +299,7 @@ java -Dkecong:host=192.168.1.100 -Dkecong:authCode=YOUR_AUTH_CODE ...
 <vehicle name="AGV-001" ...>
     <property key="kecong:host" value="192.168.100.178"/>
     <property key="kecong:port" value="17804"/>
+    <property key="kecong:varHost" value="192.168.100.200"/>
     <property key="kecong:varPort" value="17800"/>
     <property key="kecong:authCode" value="YOUR_AUTH_CODE_FROM_KECONG"/>
     <property key="kecong:pollInterval" value="100"/>
