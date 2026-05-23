@@ -359,7 +359,7 @@ class KecongUdpChannelTest {
     @DisplayName("Default port constants are correct")
     void testDefaultPorts() {
         assertEquals(17804, KecongUdpChannel.DEFAULT_NAV_PORT);
-        assertEquals(17800, KecongUdpChannel.DEFAULT_VAR_PORT);
+        assertEquals(17800, KecongUdpChannel.DEFAULT_QR_PORT);
         assertEquals("192.168.100.178", KecongUdpChannel.DEFAULT_CONTROLLER_IP);
     }
 }

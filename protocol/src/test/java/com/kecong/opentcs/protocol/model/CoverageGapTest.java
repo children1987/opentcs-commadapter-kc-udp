@@ -116,6 +116,6 @@ class CoverageGapTest {
     @Test
     @DisplayName("UDP channel - port 17800 variable ops")
     void testVariablePort() {
-        assertEquals(17800, com.kecong.opentcs.protocol.KecongUdpChannel.DEFAULT_VAR_PORT);
+        assertEquals(17800, com.kecong.opentcs.protocol.KecongUdpChannel.DEFAULT_QR_PORT);
     }
 }

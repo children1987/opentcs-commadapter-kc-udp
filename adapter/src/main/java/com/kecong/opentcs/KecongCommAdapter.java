@@ -39,9 +39,10 @@ import java.util.stream.Collectors;
  * <h3>Configuration</h3>
  * The driver reads these properties from the vehicle properties or system properties:
  * <ul>
- *   <li>{@code kecong:host} — controller IP address (default: 192.168.100.178)</li>
- *   <li>{@code kecong:port} — navigation UDP port (default: 17804)</li>
- *   <li>{@code kecong:varPort} — variable/QR/magnetic UDP port (default: 17800)</li>
+ *   <li>{@code kecong:navHost} — Laser/hybrid navigation controller IP (default: 192.168.100.178)</li>
+ *   <li>{@code kecong:navPort} — Laser/hybrid navigation UDP port (default: 17804)</li>
+ *   <li>{@code kecong:qrHost} — QR/magnetic navigation controller IP (default: 192.168.100.200)</li>
+ *   <li>{@code kecong:qrPort} — QR/magnetic navigation UDP port (default: 17800)</li>
  *   <li>{@code kecong:authCode} — protocol auth code (required, contact Kecong sales)</li>
  *   <li>{@code kecong:pollInterval} — status poll interval in ms (default: 100)</li>
  * </ul>
@@ -50,14 +51,14 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     private static final Logger LOG = LoggerFactory.getLogger(KecongCommAdapter.class);
 
-    /** Default controller IP (laser navigation → algorithm unit) */
-    private static final String DEFAULT_HOST = "192.168.100.178";
-    /** Default variable/QR/magnetic controller IP (→ logic unit) */
-    private static final String DEFAULT_VAR_HOST = "192.168.100.200";
+    /** Default nav IP (laser/hybrid → algorithm unit) */
+    private static final String DEFAULT_NAV_HOST = "192.168.100.178";
+    /** Default QR/magnetic IP (→ logic unit) */
+    private static final String DEFAULT_QR_HOST = "192.168.100.200";
     /** Default navigation port */
     private static final int DEFAULT_NAV_PORT = 17804;
-    /** Default variable/QR/magnetic port */
-    private static final int DEFAULT_VAR_PORT = 17800;
+    /** Default QR/magnetic port */
+    private static final int DEFAULT_QR_PORT = 17800;
     /** Default status polling interval (ms) */
     private static final int DEFAULT_POLL_INTERVAL = 100;
     /** Subscription duration (ms) — 60 seconds, refreshed periodically */
@@ -68,15 +69,15 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private static final int MAX_COMMAND_QUEUE_CAPACITY = 1;
 
     private final KecongVehicleProcessModel processModel;
-    private final String controllerHost;
-    private final String varHost;
+    private final String navHost;
+    private final String qrHost;
     private final int navPort;
-    private final int varPort;
+    private final int qrPort;
     private final byte[] authCode;
     private final int pollIntervalMs;
 
     private KecongUdpChannel navChannel;
-    private KecongUdpChannel varChannel;
+    private KecongUdpChannel qrChannel;
     private ScheduledExecutorService scheduler;
     private ScheduledFuture<?> pollFuture;
     private ScheduledFuture<?> subscriptionFuture;
@@ -90,17 +91,17 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private long lastStatusUpdateTime = 0;
 
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
-                             String controllerHost,
+                             String navHost,
                              int navPort,
-                             int varPort,
-                             String varHost,
+                             int qrPort,
+                             String qrHost,
                              String authCodeStr,
                              int pollIntervalMs) {
         this.processModel = Objects.requireNonNull(processModel, "processModel");
-        this.controllerHost = controllerHost != null ? controllerHost : DEFAULT_HOST;
-        this.varHost = varHost != null ? varHost : DEFAULT_VAR_HOST;
+        this.navHost = navHost != null ? navHost : DEFAULT_NAV_HOST;
+        this.qrHost = qrHost != null ? qrHost : DEFAULT_QR_HOST;
         this.navPort = navPort > 0 ? navPort : DEFAULT_NAV_PORT;
-        this.varPort = varPort > 0 ? varPort : DEFAULT_VAR_PORT;
+        this.qrPort = qrPort > 0 ? qrPort : DEFAULT_QR_PORT;
         this.authCode = authCodeStr != null
                 ? Arrays.copyOf(authCodeStr.getBytes(java.nio.charset.StandardCharsets.US_ASCII), 16)
                 : new byte[16];
@@ -113,7 +114,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Convenience constructor with defaults.
      */
     public KecongCommAdapter(KecongVehicleProcessModel processModel, String authCodeStr) {
-        this(processModel, DEFAULT_HOST, DEFAULT_NAV_PORT, DEFAULT_VAR_PORT, DEFAULT_VAR_HOST, authCodeStr, DEFAULT_POLL_INTERVAL);
+        this(processModel, DEFAULT_NAV_HOST, DEFAULT_NAV_PORT, DEFAULT_QR_PORT, DEFAULT_QR_HOST, authCodeStr, DEFAULT_POLL_INTERVAL);
     }
 
     // ===== VehicleCommAdapter interface =====
@@ -122,8 +123,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     public void initialize() {
         if (initialized) return;
 
-        LOG.info("Initializing KecongCommAdapter: host={}, navPort={}, varHost={}, varPort={}, pollInterval={}ms",
-                controllerHost, navPort, varHost, varPort, pollIntervalMs);
+        LOG.info("Initializing KecongCommAdapter: navHost={}, navPort={}, qrHost={}, qrPort={}, pollInterval={}ms",
+                navHost, navPort, qrHost, qrPort, pollIntervalMs);
 
         this.scheduler = Executors.newScheduledThreadPool(2, r -> {
             Thread t = new Thread(r, "kecong-poller");
@@ -151,8 +152,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
         try {
             // Open both UDP channels
-            navChannel = new KecongUdpChannel(controllerHost, navPort, authCode, pollIntervalMs * 2);
-            varChannel = new KecongUdpChannel(varHost, varPort, authCode, pollIntervalMs * 2);
+            navChannel = new KecongUdpChannel(navHost, navPort, authCode, pollIntervalMs * 2);
+            qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, pollIntervalMs * 2);
 
             // Start status polling
             pollFuture = scheduler.scheduleAtFixedRate(
@@ -192,9 +193,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             navChannel.close();
             navChannel = null;
         }
-        if (varChannel != null) {
-            varChannel.close();
-            varChannel = null;
+        if (qrChannel != null) {
+            qrChannel.close();
+            qrChannel = null;
         }
 
         // Update process model
@@ -355,7 +356,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             // 3. Switch to manual mode → manual position → confirm position → switch to auto
             // Step: NaviControl = 0 (manual)
             byte[] manualModeData = encodeVariableWrite("NaviControl", new byte[]{0, 0, 0, 0});
-            varChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, manualModeData);
+            qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, manualModeData);
 
             // Step: Manual position (0x14)
             navChannel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, new byte[0]);
@@ -380,7 +381,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
             // Switch to auto mode: NaviControl = 1
             byte[] autoModeData = encodeVariableWrite("NaviControl", new byte[]{1, 0, 0, 0});
-            varChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, autoModeData);
+            qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, autoModeData);
 
             LOG.info("Auto mode initialization complete");
             processModel.setAutoReady(true);

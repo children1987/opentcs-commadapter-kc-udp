@@ -86,10 +86,10 @@ For each Kecong AGV, add these properties in the openTCS plant model:
 | Property | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `kecong:authCode` | **Yes** | — | Protocol auth code (contact Kecong sales) |
-| `kecong:host` | No | `192.168.100.178` | Laser/hybrid navigation IP (algorithm unit) |
-| `kecong:port` | No | `17804` | Navigation UDP port (hybrid/laser/status) |
-| `kecong:varHost` | No | `192.168.100.200` | QR/magnetic/variable operations IP (logic unit) |
-| `kecong:varPort` | No | `17800` | QR/magnetic/variable UDP port |
+| `kecong:navHost` | No | `192.168.100.178` | Laser/hybrid navigation IP (algorithm unit) |
+| `kecong:navPort` | No | `17804` | Laser/hybrid navigation UDP port |
+| `kecong:qrHost` | No | `192.168.100.200` | QR/magnetic navigation IP (logic unit) |
+| `kecong:qrPort` | No | `17800` | QR/magnetic navigation UDP port |
 | `kecong:pollInterval` | No | `100` | Status poll interval (ms) |
 
 ### 5. Point Name Convention
@@ -126,7 +126,7 @@ Navigates via QR code labels on the floor. Supports batch delivery for long path
 
 **Model**: `QrNavigationTask` with `QrNavigationTask.Segment` (destination QR ID, route ID, dx/dy, heading, speed, rotation limit)
 
-**Port**: 17800 (`varPort`)
+**Port**: 17800 (`qrPort`)
 
 ### Magnetic Navigation (0xE0–0xE3)
 
@@ -141,14 +141,14 @@ For AGVs following magnetic tape or magnetic nails on the floor.
 
 **Models**: `MagneticNavTask` (segments `Landmark` + markers `Tagmark`), `MagneticControl`, `MagneticRelocalize`, `MagneticStatus`
 
-**Port**: 17800 (`varPort`)
+**Port**: 17800 (`qrPort`)
 
 ### Vehicle Properties
 
 | Property | Default | Required For |
 |----------|---------|-------------|
-| `kecong:varHost` | same as `kecong:host` | QR / Magnetic navigation (if controller uses different IP) |
-| `kecong:varPort` | `17800` | QR / Magnetic navigation |
+| `kecong:qrHost` | `192.168.100.200` | QR / Magnetic navigation (if controller uses different IP) |
+| `kecong:qrPort` | `17800` | QR / Magnetic navigation |
 
 ## Architecture
 
@@ -345,10 +345,10 @@ open target/site/jacoco/index.html
 
 ### System Properties
 
-All properties can also be set via Java system properties (using the full key like `kecong:host`):
+All properties can also be set via Java system properties (using the full key like `kecong:navHost`):
 
 ```bash
-java -Dkecong:host=192.168.1.100 -Dkecong:authCode=YOUR_AUTH_CODE ...
+java -Dkecong:navHost=192.168.1.100 -Dkecong:authCode=YOUR_AUTH_CODE ...
 ```
 
 ### Vehicle Integration Example
@@ -356,10 +356,10 @@ java -Dkecong:host=192.168.1.100 -Dkecong:authCode=YOUR_AUTH_CODE ...
 ```xml
 <!-- openTCS plant model excerpt -->
 <vehicle name="AGV-001" ...>
-    <property key="kecong:host" value="192.168.100.178"/>
-    <property key="kecong:port" value="17804"/>
-    <property key="kecong:varHost" value="192.168.100.200"/>
-    <property key="kecong:varPort" value="17800"/>
+    <property key="kecong:navHost" value="192.168.100.178"/>
+    <property key="kecong:navPort" value="17804"/>
+    <property key="kecong:qrHost" value="192.168.100.200"/>
+    <property key="kecong:qrPort" value="17800"/>
     <property key="kecong:authCode" value="YOUR_AUTH_CODE_FROM_KECONG"/>
     <property key="kecong:pollInterval" value="100"/>
 </vehicle>
