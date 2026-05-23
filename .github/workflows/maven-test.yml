@@ -1,0 +1,64 @@
+name: Java CI with Maven
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Test on Java ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [11, 17, 21]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java }}
+          distribution: temurin
+          cache: maven
+
+      - name: Build & Test (protocol module)
+        run: mvn -B test -pl protocol --also-make
+
+      - name: Generate JaCoCo Coverage Report
+        run: mvn -B jacoco:report -pl protocol
+        if: matrix.java == '17'
+
+      - name: Upload Coverage Report
+        uses: actions/upload-artifact@v4
+        if: matrix.java == '17'
+        with:
+          name: jacoco-coverage-report
+          path: protocol/target/site/jacoco/
+
+      - name: Verify Coverage Threshold (85%)
+        if: matrix.java == '17'
+        run: |
+          COVERAGE=$(grep -oP 'Total[^<]*<[^>]*>\K[0-9]+' protocol/target/site/jacoco/index.html | head -1)
+          echo "JaCoCo Instruction Coverage: ${COVERAGE}%"
+          if [ "$COVERAGE" -lt 85 ]; then
+            echo "❌ Coverage below 85% threshold!"
+            exit 1
+          fi
+          echo "✅ Coverage threshold met"
+
+  summary:
+    name: Test Summary
+    needs: test
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          echo "All test jobs completed."
+          echo "See details in the 'test' job above."
