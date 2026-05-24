@@ -65,12 +65,15 @@ jobs:
           cache: maven
 
       - name: Run OWASP Dependency-Check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
         run: |
           mvn -B org.owasp:dependency-check-maven:check \
             -Dformat=HTML \
             -Dformat=JSON \
             -DfailBuildOnCVSS=7 \
-            -DassemblyAnalyzerEnabled=false
+            -DassemblyAnalyzerEnabled=false \
+            -DnvdApiKey=${{ secrets.NVD_API_KEY }}
 
       - name: Upload Dependency-Check Report
         uses: actions/upload-artifact@v4
