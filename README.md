@@ -2,6 +2,7 @@
 
 [![codecov](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp/branch/master/graph/badge.svg)](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp)
 [![Java CI](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/maven-test.yml/badge.svg)](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/maven-test.yml)
+[![Security Scan](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/security.yml/badge.svg)](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/security.yml)
 
 openTCS Vehicle Driver (CommAdapter) for **Kecong (科聪) MRC/FRC series AGV controllers**, implementing the **Kecong UDP Interface Protocol V2.0 (xRobotProtocol)**.
 
