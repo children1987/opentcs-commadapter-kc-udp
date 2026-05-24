@@ -16,7 +16,7 @@
     <description>openTCS VehicleCommAdapter for Kecong AGV controllers. Depends on the protocol library and openTCS API.</description>
 
     <properties>
-        <opentcs.version>5.11.0</opentcs.version>
+        <opentcs.version>7.2.1</opentcs.version>
     </properties>
 
     <dependencies>
@@ -27,7 +27,12 @@
             <version>${project.version}</version>
         </dependency>
 
-        <!-- openTCS API -->
+        <!-- openTCS API (7.x: data model moved to opentcs-api-base) -->
+        <dependency>
+            <groupId>org.opentcs</groupId>
+            <artifactId>opentcs-api-base</artifactId>
+            <version>${opentcs.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.opentcs</groupId>
             <artifactId>opentcs-api-internal</artifactId>

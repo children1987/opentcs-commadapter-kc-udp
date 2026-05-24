@@ -7,12 +7,17 @@ import com.kecong.opentcs.protocol.model.NavigationTask.TaskPath;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPoint;
 import com.kecong.opentcs.protocol.model.RobotStatus;
 import org.opentcs.data.model.Point;
+import org.opentcs.data.model.Pose;
 import org.opentcs.data.model.Triple;
 import org.opentcs.data.model.Vehicle;
 import org.opentcs.data.order.Route;
+import org.opentcs.data.order.TransportOrder;
 import org.opentcs.drivers.vehicle.MovementCommand;
 import org.opentcs.drivers.vehicle.VehicleCommAdapter;
+import org.opentcs.drivers.vehicle.VehicleCommAdapterMessage;
 import org.opentcs.drivers.vehicle.VehicleProcessModel;
+import org.opentcs.drivers.vehicle.management.VehicleProcessModelTO;
+import org.opentcs.drivers.vehicle.VehicleCommAdapterDescription;
 import org.opentcs.util.ExplainedBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,48 +29,19 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
- * openTCS VehicleCommAdapter implementation for Kecong (科聪) AGV controllers.
- *
- * <p>Implements the openTCS driver interface using the Kecong UDP protocol V2.0.
- * Supports hybrid navigation (laser + QR code) via the 0xAE/0xAF/0xB1/0xB2 commands.
- *
- * <h3>Interaction Flow</h3>
- * <ol>
- *   <li>enable() → subscribe to vehicle status → poll status → init auto mode → ready</li>
- *   <li>sendMovementCommand() → translate openTCS route to 0xAE navigation task → wait for completion</li>
- *   <li>disable() → unsubscribe → close UDP channel</li>
- * </ol>
- *
- * <h3>Configuration</h3>
- * The driver reads these properties from the vehicle properties or system properties:
- * <ul>
- *   <li>{@code kecong:navHost} — Laser/hybrid navigation controller IP (default: 192.168.100.178)</li>
- *   <li>{@code kecong:navPort} — Laser/hybrid navigation UDP port (default: 17804)</li>
- *   <li>{@code kecong:qrHost} — QR/magnetic navigation controller IP (default: 192.168.100.200)</li>
- *   <li>{@code kecong:qrPort} — QR/magnetic navigation UDP port (default: 17800)</li>
- *   <li>{@code kecong:authCode} — protocol auth code (required, contact Kecong sales)</li>
- *   <li>{@code kecong:pollInterval} — status poll interval in ms (default: 100)</li>
- * </ul>
+ * openTCS VehicleCommAdapter implementation for Kecong AGV controllers (openTCS 7.x).
  */
 public class KecongCommAdapter implements VehicleCommAdapter {
 
     private static final Logger LOG = LoggerFactory.getLogger(KecongCommAdapter.class);
 
-    /** Default nav IP (laser/hybrid → algorithm unit) */
     private static final String DEFAULT_NAV_HOST = "192.168.100.178";
-    /** Default QR/magnetic IP (→ logic unit) */
     private static final String DEFAULT_QR_HOST = "192.168.100.200";
-    /** Default navigation port */
     private static final int DEFAULT_NAV_PORT = 17804;
-    /** Default QR/magnetic port */
     private static final int DEFAULT_QR_PORT = 17800;
-    /** Default status polling interval (ms) */
     private static final int DEFAULT_POLL_INTERVAL = 100;
-    /** Subscription duration (ms) — 60 seconds, refreshed periodically */
     private static final int SUBSCRIPTION_DURATION_MS = 60_000;
-    /** Subscription refresh interval (ms) */
     private static final long SUBSCRIPTION_REFRESH_MS = 30_000;
-    /** Max pending commands */
     private static final int MAX_COMMAND_QUEUE_CAPACITY = 1;
 
     private final KecongVehicleProcessModel processModel;
@@ -84,6 +60,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private volatile boolean initialized;
     private volatile boolean enabled;
     private String subscriptionUuid;
+
+    // Command queues (managed by adapter in 7.x)
+    private final Queue<MovementCommand> sentCommands = new ArrayDeque<>(MAX_COMMAND_QUEUE_CAPACITY);
 
     // Task state
     private int currentOrderId = 0;
@@ -110,28 +89,22 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         this.enabled = false;
     }
 
-    /**
-     * Convenience constructor with defaults.
-     */
     public KecongCommAdapter(KecongVehicleProcessModel processModel, String authCodeStr) {
         this(processModel, DEFAULT_NAV_HOST, DEFAULT_NAV_PORT, DEFAULT_QR_PORT, DEFAULT_QR_HOST, authCodeStr, DEFAULT_POLL_INTERVAL);
     }
 
-    // ===== VehicleCommAdapter interface =====
+    // ===== Lifecycle (from VehicleCommAdapter extends Lifecycle) =====
 
     @Override
     public void initialize() {
         if (initialized) return;
-
         LOG.info("Initializing KecongCommAdapter: navHost={}, navPort={}, qrHost={}, qrPort={}, pollInterval={}ms",
                 navHost, navPort, qrHost, qrPort, pollIntervalMs);
-
         this.scheduler = Executors.newScheduledThreadPool(2, r -> {
             Thread t = new Thread(r, "kecong-poller");
             t.setDaemon(true);
             return t;
         });
-
         this.subscriptionUuid = UUID.randomUUID().toString();
         initialized = true;
     }
@@ -142,29 +115,32 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     }
 
     @Override
-    public synchronized void enable() {
-        if (!initialized) {
-            throw new IllegalStateException("Not initialized");
+    public void terminate() {
+        if (!initialized) return;
+        disable();
+        if (scheduler != null) {
+            scheduler.shutdownNow();
+            scheduler = null;
         }
+        initialized = false;
+    }
+
+    // ===== VehicleCommAdapter interface =====
+
+    @Override
+    public synchronized void enable() {
+        if (!initialized) throw new IllegalStateException("Not initialized");
         if (enabled) return;
-
         LOG.info("Enabling KecongCommAdapter for vehicle '{}'", getName());
-
         try {
-            // Open both UDP channels
             navChannel = new KecongUdpChannel(navHost, navPort, authCode, pollIntervalMs * 2);
             qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, pollIntervalMs * 2);
-
-            // Start status polling
             pollFuture = scheduler.scheduleAtFixedRate(
                     this::pollRobotStatus,
                     pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
-
-            // Start subscription refresh
             subscriptionFuture = scheduler.scheduleAtFixedRate(
                     this::refreshSubscription,
                     0, SUBSCRIPTION_REFRESH_MS, TimeUnit.MILLISECONDS);
-
             enabled = true;
             LOG.info("KecongCommAdapter enabled for '{}'", getName());
         } catch (IOException e) {
@@ -176,274 +152,217 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     @Override
     public synchronized void disable() {
         if (!enabled) return;
-
         LOG.info("Disabling KecongCommAdapter for '{}'", getName());
-
         enabled = false;
-
-        if (pollFuture != null) {
-            pollFuture.cancel(false);
-            pollFuture = null;
-        }
-        if (subscriptionFuture != null) {
-            subscriptionFuture.cancel(false);
-            subscriptionFuture = null;
-        }
-        if (navChannel != null) {
-            navChannel.close();
-            navChannel = null;
-        }
-        if (qrChannel != null) {
-            qrChannel.close();
-            qrChannel = null;
-        }
-
-        // Update process model
-        processModel.setVehicleState(Vehicle.State.UNKNOWN);
+        if (pollFuture != null) { pollFuture.cancel(false); pollFuture = null; }
+        if (subscriptionFuture != null) { subscriptionFuture.cancel(false); subscriptionFuture = null; }
+        if (navChannel != null) { navChannel.close(); navChannel = null; }
+        if (qrChannel != null) { qrChannel.close(); qrChannel = null; }
+        sentCommands.clear();
+        processModel.setState(Vehicle.State.UNKNOWN);
     }
 
     @Override
-    public boolean isEnabled() {
-        return enabled;
-    }
+    public boolean isEnabled() { return enabled; }
 
     @Nonnull
     @Override
-    public VehicleProcessModel getProcessModel() {
-        return processModel;
+    public VehicleProcessModel getProcessModel() { return processModel; }
+
+    @Nonnull
+    @Override
+    public VehicleProcessModelTO createTransferableProcessModel() {
+        VehicleProcessModelTO to = new VehicleProcessModelTO();
+        to.setName(processModel.getName());
+        to.setCommAdapterEnabled(processModel.isCommAdapterEnabled());
+        to.setCommAdapterConnected(processModel.isCommAdapterConnected());
+        to.setPosition(processModel.getPosition());
+        to.setPose(processModel.getPose());
+        to.setEnergyLevel(processModel.getEnergyLevel());
+        to.setLoadHandlingDevices(processModel.getLoadHandlingDevices());
+        to.setState(processModel.getState());
+        to.setBoundingBox(processModel.getBoundingBox());
+        return to;
     }
 
     @Override
-    public int getCommandQueueCapacity() {
-        return MAX_COMMAND_QUEUE_CAPACITY;
+    public Queue<MovementCommand> getUnsentCommands() { return new ArrayDeque<>(); }
+
+    @Override
+    public Queue<MovementCommand> getSentCommands() { return sentCommands; }
+
+    @Override
+    public int getCommandsCapacity() { return MAX_COMMAND_QUEUE_CAPACITY; }
+
+    @Override
+    public boolean canAcceptNextCommand() {
+        return enabled && sentCommands.size() < MAX_COMMAND_QUEUE_CAPACITY;
     }
 
     @Override
-    public synchronized void sendCommand(@Nonnull MovementCommand cmd) throws IllegalArgumentException {
-        if (!enabled) {
-            throw new IllegalStateException("Adapter not enabled");
-        }
-        if (cmd == null) {
-            throw new IllegalArgumentException("MovementCommand is null");
-        }
+    public String getRechargeOperation() { return "CHARGE"; }
 
-        LOG.info("Processing movement command: step={}, dest={}, op={}",
-                cmd.getStep().getRouteIndex(),
-                cmd.getStep().getDestinationPoint().getName(),
-                cmd.getOperation());
+    @Override
+    public synchronized boolean enqueueCommand(@Nonnull MovementCommand cmd) throws IllegalArgumentException {
+        Objects.requireNonNull(cmd, "cmd");
+        if (!enabled) throw new IllegalStateException("Adapter not enabled");
+        if (sentCommands.size() >= MAX_COMMAND_QUEUE_CAPACITY) return false;
+
+        Route.Step step = cmd.getStep();
+        LOG.info("Processing movement command: stepIdx={}, dest={}, op={}",
+                step.getRouteIndex(), step.getDestinationPoint().getName(), cmd.getOperation());
 
         try {
-            // Build navigation task from movement command
             NavigationTask task = buildNavigationTask(cmd);
-            if (task == null) {
-                LOG.warn("Could not build navigation task from command");
-                return;
-            }
+            if (task == null) return false;
 
-            // Update task state
             currentOrderId = task.getOrderId();
             currentTaskKey = task.getTaskKey();
 
-            // Send navigation task
             byte[] taskData = KecongMessageEncoder.encodeNavigationTask(task);
             boolean success = navChannel.sendAndVerify(KecongCommandCode.CMD_HYBRID_NAV_TASK, taskData);
 
             if (success) {
                 LOG.info("Navigation task dispatched: orderId={}, taskKey={}, {} points",
                         currentOrderId, currentTaskKey, task.getPoints().size());
-
-                // Update process model
-                processModel.setVehicleState(Vehicle.State.EXECUTING);
-                processModel.getSentCommands().add(cmd);
-
-                // Wait for task completion (with timeout)
+                sentCommands.add(cmd);
+                processModel.setState(Vehicle.State.EXECUTING);
                 waitForTaskCompletion(cmd);
+                return true;
             } else {
                 LOG.error("Failed to dispatch navigation task: orderId={}", currentOrderId);
-                processModel.setVehicleState(Vehicle.State.ERROR);
+                processModel.setState(Vehicle.State.ERROR);
+                return false;
             }
         } catch (IOException e) {
             LOG.error("I/O error dispatching navigation task: {}", e.getMessage(), e);
-            processModel.setVehicleState(Vehicle.State.ERROR);
+            processModel.setState(Vehicle.State.ERROR);
+            return false;
         }
     }
 
     @Override
-    public synchronized boolean canSendNextCommand() {
-        return enabled
-                && !peekCommandQueue().isEmpty()
-                && processModel.getVehicleState() != Vehicle.State.EXECUTING;
+    public void clearCommandQueue() {
+        sentCommands.clear();
+        currentOrderId = 0;
+        currentTaskKey = 0;
     }
 
     @Nonnull
     @Override
-    public ExplainedBoolean canProcess(@Nonnull List<String> operations) {
-        Objects.requireNonNull(operations);
-        // Kecong supports all standard AGV operations
+    public ExplainedBoolean canProcess(@Nonnull TransportOrder order) {
+        Objects.requireNonNull(order);
         return new ExplainedBoolean(true, "Supported");
     }
 
     @Override
-    public void processMessage(@Nonnull Object message) {
-        // Not used — Kecong uses polling, not push
+    public void onVehiclePaused(boolean paused) {
+        LOG.info("Vehicle paused state changed to: {}", paused);
     }
 
     @Override
-    public int getSentQueueCapacity() {
-        return 1;
+    public void processMessage(@Nonnull VehicleCommAdapterMessage message) {
+        // Not used — Kecong uses polling, not push messaging
+        LOG.debug("Ignoring comm adapter message of type: {}", message.getType());
     }
 
     // ===== Robot interaction methods =====
 
-    /**
-     * Subscribe to robot status (0xB1) with AGV state and cargo state.
-     */
     private void subscribe() {
         if (navChannel == null || navChannel.isClosed()) return;
-
         try {
             byte[] subData = KecongMessageEncoder.encodeSubscription(
                     new byte[]{KecongCommandCode.CMD_QUERY_ROBOT_STATUS, KecongCommandCode.CMD_QUERY_CARGO_STATUS},
-                    pollIntervalMs,
-                    SUBSCRIPTION_DURATION_MS,
-                    false,  // periodic report
-                    subscriptionUuid
-            );
+                    pollIntervalMs, SUBSCRIPTION_DURATION_MS, false, subscriptionUuid);
             boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_SUBSCRIPTION, subData);
-            if (ok) {
-                LOG.debug("Subscription registered: {}", subscriptionUuid);
-            } else {
-                LOG.warn("Failed to register subscription: {}", subscriptionUuid);
-            }
+            if (ok) LOG.debug("Subscription registered: {}", subscriptionUuid);
+            else LOG.warn("Failed to register subscription: {}", subscriptionUuid);
         } catch (IOException e) {
             LOG.warn("Subscription error: {}", e.getMessage());
         }
     }
 
-    /**
-     * Refresh subscription before it expires.
-     */
     private void refreshSubscription() {
         if (!enabled || navChannel == null || navChannel.isClosed()) return;
         subscribe();
     }
 
-    /**
-     * Perform auto-mode initialization sequence.
-     */
     private boolean initAutoMode() {
         if (navChannel == null || navChannel.isClosed()) return false;
-
         try {
-            // 1. Query robot status (0xAF)
             byte[] statusData = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
-            if (statusData == null) {
-                LOG.debug("Failed to query robot status during init");
-                return false;
-            }
-
+            if (statusData == null) return false;
             RobotStatus status = KecongMessageDecoder.decodeRobotStatus(statusData);
             if (status == null) return false;
-
-            // 2. Check if already in auto mode
             if (status.isAutoMode() && status.getLocalizationStatus() == 3) {
                 LOG.info("Robot already in auto mode with localization complete");
                 processModel.setAutoReady(true);
-                processModel.setVehicleState(Vehicle.State.IDLE);
+                processModel.setState(Vehicle.State.IDLE);
                 return true;
             }
-
-            // 3. Switch to manual mode → manual position → confirm position → switch to auto
-            // Step: NaviControl = 0 (manual)
             byte[] manualModeData = encodeVariableWrite("NaviControl", new byte[]{0, 0, 0, 0});
             qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, manualModeData);
-
-            // Step: Manual position (0x14)
             navChannel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, new byte[0]);
-
-            // Wait briefly
             try { Thread.sleep(200); } catch (InterruptedException ignored) {}
-
-            // Step: Query and wait for localization complete
-            for (int i = 0; i < 30; i++) {  // max ~6 seconds
+            for (int i = 0; i < 30; i++) {
                 statusData = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
                 if (statusData != null) {
                     status = KecongMessageDecoder.decodeRobotStatus(statusData);
-                    if (status != null && status.getLocalizationStatus() == 3) {
-                        break;
-                    }
+                    if (status != null && status.getLocalizationStatus() == 3) break;
                 }
                 try { Thread.sleep(200); } catch (InterruptedException ignored) {}
             }
-
-            // Confirm position (0x1F)
             navChannel.sendAndVerify(KecongCommandCode.CMD_CONFIRM_POSITION, new byte[0]);
-
-            // Switch to auto mode: NaviControl = 1
             byte[] autoModeData = encodeVariableWrite("NaviControl", new byte[]{1, 0, 0, 0});
             qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, autoModeData);
-
             LOG.info("Auto mode initialization complete");
             processModel.setAutoReady(true);
-            processModel.setVehicleState(Vehicle.State.IDLE);
+            processModel.setState(Vehicle.State.IDLE);
             return true;
-        } catch (IOException | InterruptedException e) {
+        } catch (IOException e) {
             LOG.error("Auto mode init error: {}", e.getMessage(), e);
             return false;
         }
     }
 
-    /**
-     * Poll robot status (0xAF) and update process model.
-     */
     private void pollRobotStatus() {
         if (!enabled || navChannel == null || navChannel.isClosed()) return;
-
         try {
-            // Always query 0xAF before any navigation command (protocol requirement)
             byte[] statusData = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
             if (statusData == null) {
-                // On first timeout, try init auto mode
-                if (!processModel.isAutoReady()) {
-                    initAutoMode();
-                }
+                if (!processModel.isAutoReady()) initAutoMode();
                 return;
             }
-
             RobotStatus status = KecongMessageDecoder.decodeRobotStatus(statusData);
             if (status == null) return;
-
             lastStatusUpdateTime = System.currentTimeMillis();
 
-            // Update process model
-            processModel.setVehiclePosition(new Triple(
-                    (long) (status.getPositionX() * 1000),  // m → mm
-                    (long) (status.getPositionY() * 1000),
-                    0));
-            processModel.setVehicleOrientationAngle(status.getHeadingAngle());
-            processModel.setVehicleState(translateAgvState(status));
+            // Update process model with Pose (replaces setVehiclePosition + setOrientationAngle in 7.x)
+            Triple pos = new Triple(
+                    (long) (status.getPositionX() * 1000),
+                    (long) (status.getPositionY() * 1000), 0);
+            processModel.setPose(new Pose(pos, status.getHeadingAngle()));
+            processModel.setState(translateAgvState(status));
             processModel.setKecongWorkMode(status.getWorkMode());
             processModel.setKecongAgvState(status.getAgvState());
             processModel.setLocalizationStatus(status.getLocalizationStatus());
             processModel.setConfidence(status.getConfidence());
             processModel.setBatteryPercent(status.getBatteryPercent());
             processModel.setChargeStatus(status.getChargeStatus());
-            processModel.setVehicleEnergyLevel((int) (status.getBatteryPercent() * 100));
+            processModel.setEnergyLevel((int) (status.getBatteryPercent() * 100));
             processModel.setCmdSequence(navChannel.getSequenceNumber());
 
-            // Handle errors
             if (status.hasError()) {
                 String errorCodes = Arrays.stream(status.getAbnormalEvents())
                         .filter(ab -> ab.isError())
                         .map(ab -> String.format("0x%04X", ab.getEventCode()))
                         .collect(Collectors.joining(","));
                 processModel.setErrorCodes(errorCodes);
-                if (processModel.getVehicleState() != Vehicle.State.EXECUTING) {
-                    processModel.setVehicleState(Vehicle.State.ERROR);
+                if (processModel.getState() != Vehicle.State.EXECUTING) {
+                    processModel.setState(Vehicle.State.ERROR);
                 }
                 LOG.warn("Robot has errors: {}", errorCodes);
             }
-
             LOG.trace("Robot status: {}", status);
         } catch (IOException e) {
             LOG.debug("Poll error: {}", e.getMessage());
@@ -451,22 +370,14 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     }
 
     /**
-     * Build a Kecong navigation task from an openTCS movement command.
+     * Build a Kecong navigation task from a single openTCS movement command step.
+     * In 7.x, MovementCommand no longer has getRoute() — we process one step at a time.
      */
     private NavigationTask buildNavigationTask(MovementCommand cmd) {
         Route.Step step = cmd.getStep();
         Point destPoint = step.getDestinationPoint();
-        if (destPoint == null) {
-            LOG.warn("No destination point in movement command");
-            return null;
-        }
+        if (destPoint == null) return null;
 
-        // Get the full route for remaining steps
-        List<Route.Step> remainingSteps = cmd.getRoute().getSteps().stream()
-                .filter(s -> s.getRouteIndex() >= step.getRouteIndex())
-                .collect(Collectors.toList());
-
-        // Generate new order/task IDs
         int orderId = currentOrderId + 1;
         int taskKey = 1;
 
@@ -475,172 +386,105 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 .taskKey(taskKey)
                 .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE);
 
-        // Convert route steps to path points
-        int seqNumber = 0;
-        for (Route.Step s : remainingSteps) {
-            Point p = s.getDestinationPoint();
-            // Assume point name contains numeric ID (configurable via properties)
-            int pointId = extractPointId(p);
-            TaskPoint tp = TaskPoint.builder()
-                    .sequenceNumber(seqNumber)
-                    .pointId(pointId)
-                    .build();
-            taskBuilder.addPoint(tp);
-            seqNumber += 2;  // even numbers: 0, 2, 4, ...
-        }
+        int pointId = extractPointId(destPoint);
+        TaskPoint tp = TaskPoint.builder()
+                .sequenceNumber(0)
+                .pointId(pointId)
+                .build();
+        taskBuilder.addPoint(tp);
 
-        // Add action at destination if operation specified
+        // Add action at destination
         String operation = cmd.getOperation();
-        if (operation != null && !operation.isEmpty() && !remainingSteps.isEmpty()) {
-            TaskPoint lastPoint = taskBuilder.build().getPoints().get(taskBuilder.build().getPoints().size() - 1);
+        if (operation != null && !operation.isEmpty()) {
             TaskAction action = createActionForOperation(operation);
             if (action != null) {
-                // Rebuild with action
                 List<TaskPoint> points = new ArrayList<>(taskBuilder.build().getPoints());
                 TaskPoint modified = TaskPoint.builder()
-                        .sequenceNumber(lastPoint.getSequenceNumber())
-                        .pointId(lastPoint.getPointId())
+                        .sequenceNumber(tp.getSequenceNumber())
+                        .pointId(tp.getPointId())
                         .addAction(action)
                         .build();
-                points.set(points.size() - 1, modified);
+                points.set(0, modified);
                 taskBuilder.points(points);
             }
         }
-
         return taskBuilder.build();
     }
 
-    /**
-     * Extract numeric point ID from openTCS point.
-     * By default, tries to parse the point name as an integer.
-     * Override for custom mapping.
-     */
     protected int extractPointId(Point point) {
-        try {
-            return Integer.parseInt(point.getName());
-        } catch (NumberFormatException e) {
-            // Try properties
+        try { return Integer.parseInt(point.getName()); }
+        catch (NumberFormatException e) {
             Map<String, String> props = point.getProperties();
-            if (props.containsKey("kecong:pointId")) {
-                return Integer.parseInt(props.get("kecong:pointId"));
-            }
-            // Fall back to hash
+            if (props.containsKey("kecong:pointId")) return Integer.parseInt(props.get("kecong:pointId"));
             return Math.abs(point.getName().hashCode() % 100000);
         }
     }
 
-    /**
-     * Create a Kecong action for an openTCS operation string.
-     */
     private TaskAction createActionForOperation(String operation) {
         switch (operation.toUpperCase()) {
-            case "LOAD":
-            case "PICKUP":
-                // Pallet lift up (托盘上升)
-                return new TaskAction(
-                        KecongActionType.ACTION_PALLET_LIFT,
-                        KecongActionType.CONCURRENT_SINGLE,
-                        (int) (System.currentTimeMillis() % Integer.MAX_VALUE),
-                        new byte[]{1, 0, 0, 0});  // 1 = up
-            case "UNLOAD":
-            case "DROPOFF":
-                // Pallet lift down (托盘下降)
-                return new TaskAction(
-                        KecongActionType.ACTION_PALLET_LIFT,
-                        KecongActionType.CONCURRENT_SINGLE,
-                        (int) (System.currentTimeMillis() % Integer.MAX_VALUE),
-                        new byte[]{2, 0, 0, 0});  // 2 = down
-            case "CHARGE":
-                // Charge operation (uses variable write)
-                return null;  // Handled separately
-            default:
-                LOG.debug("Unknown operation '{}', skipping action", operation);
-                return null;
+            case "LOAD": case "PICKUP":
+                return new TaskAction(KecongActionType.ACTION_PALLET_LIFT, KecongActionType.CONCURRENT_SINGLE,
+                        (int) (System.currentTimeMillis() % Integer.MAX_VALUE), new byte[]{1, 0, 0, 0});
+            case "UNLOAD": case "DROPOFF":
+                return new TaskAction(KecongActionType.ACTION_PALLET_LIFT, KecongActionType.CONCURRENT_SINGLE,
+                        (int) (System.currentTimeMillis() % Integer.MAX_VALUE), new byte[]{2, 0, 0, 0});
+            case "CHARGE": return null;
+            default: return null;
         }
     }
 
-    /**
-     * Translate Kecong AGV state to openTCS Vehicle.State.
-     */
     private Vehicle.State translateAgvState(RobotStatus status) {
-        if (status.getAgvState() == 0) return Vehicle.State.IDLE;
-        if (status.getAgvState() == 1) return Vehicle.State.EXECUTING;
-        if (status.getAgvState() == 2) return Vehicle.State.IDLE;  // paused = idle for openTCS
-        if (status.getAgvState() == 6) return Vehicle.State.ERROR;
-        if (status.getAgvState() == 3) return Vehicle.State.UNAVAILABLE;
-        return Vehicle.State.UNKNOWN;
+        switch (status.getAgvState()) {
+            case 0: return Vehicle.State.IDLE;
+            case 1: return Vehicle.State.EXECUTING;
+            case 2: return Vehicle.State.IDLE;
+            case 6: return Vehicle.State.ERROR;
+            case 3: return Vehicle.State.UNAVAILABLE;
+            default: return Vehicle.State.UNKNOWN;
+        }
     }
 
-    /**
-     * Wait for current navigation task to complete.
-     */
     private void waitForTaskCompletion(MovementCommand cmd) {
-        int maxWaitMs = 600_000;  // 10 minutes max
+        int maxWaitMs = 600_000;
         int checkInterval = 500;
         long start = System.currentTimeMillis();
-
         while (System.currentTimeMillis() - start < maxWaitMs) {
             if (!enabled) return;
-
             RobotStatus status = getLatestStatus();
-            if (status == null) {
-                try { Thread.sleep(checkInterval); } catch (InterruptedException ignored) {}
-                continue;
-            }
-
-            // Check if task complete
+            if (status == null) { try { Thread.sleep(checkInterval); } catch (InterruptedException ignored) {} continue; }
             if (status.getOrderId() == 0 || status.getOrderId() != currentOrderId) {
-                // Task finished
-                processModel.getSentCommands().remove(cmd);
-                processModel.setVehicleState(Vehicle.State.IDLE);
+                sentCommands.remove(cmd);
+                processModel.setState(Vehicle.State.IDLE);
                 LOG.info("Navigation task completed: orderId={}", currentOrderId);
                 return;
             }
-
-            // Check for errors
             if (status.hasError() || status.isNavFailed()) {
                 LOG.error("Navigation failed during task execution");
-                processModel.setVehicleState(Vehicle.State.ERROR);
+                processModel.setState(Vehicle.State.ERROR);
                 return;
             }
-
             try { Thread.sleep(checkInterval); } catch (InterruptedException ignored) {}
         }
-
         LOG.warn("Task completion wait timeout after {}ms", maxWaitMs);
-        processModel.setVehicleState(Vehicle.State.ERROR);
+        processModel.setState(Vehicle.State.ERROR);
     }
 
-    /**
-     * Get latest robot status by polling once.
-     */
     private RobotStatus getLatestStatus() {
         try {
             if (navChannel == null || navChannel.isClosed()) return null;
             byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
             if (data == null) return null;
             return KecongMessageDecoder.decodeRobotStatus(data);
-        } catch (IOException e) {
-            return null;
-        }
+        } catch (IOException e) { return null; }
     }
 
-    /**
-     * Encode a variable write command (0x00).
-     */
     private byte[] encodeVariableWrite(String varName, byte[] value) {
         byte[] data = new byte[272];
         byte[] nameBytes = varName.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         System.arraycopy(nameBytes, 0, data, 0, Math.min(nameBytes.length, 16));
-        if (value != null) {
-            System.arraycopy(value, 0, data, 16, Math.min(value.length, 256));
-        }
+        if (value != null) System.arraycopy(value, 0, data, 16, Math.min(value.length, 256));
         return data;
     }
 
-    @Nonnull
-    @Override
-    public String getName() {
-        return processModel.getVehicleName();
-    }
+    public String getName() { return processModel.getName(); }
 }

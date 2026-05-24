@@ -3,12 +3,14 @@ package com.kecong.opentcs;
 import org.opentcs.data.model.Vehicle;
 import org.opentcs.drivers.vehicle.VehicleCommAdapter;
 import org.opentcs.drivers.vehicle.VehicleCommAdapterFactory;
+import org.opentcs.drivers.vehicle.VehicleCommAdapterDescription;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Factory for creating KecongCommAdapter instances for openTCS vehicles.
@@ -56,7 +58,7 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
         initialized = false;
     }
 
-    @Nonnull
+    @Nullable
     @Override
     public VehicleCommAdapter getAdapterFor(@Nonnull Vehicle vehicle) {
         Objects.requireNonNull(vehicle, "vehicle");
@@ -79,12 +81,17 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
         return new KecongCommAdapter(processModel, navHost, navPort, qrPort, qrHost, authCode, pollInterval);
     }
 
-    @Nonnull
     @Override
-    public AdapterComponents getAdapterComponents() {
-        return new AdapterComponents()
-                .withProcessModelClass(KecongVehicleProcessModel.class)
-                .withAdapterClass(KecongCommAdapter.class);
+    public VehicleCommAdapterDescription getDescription() {
+        return new VehicleCommAdapterDescription() {
+            @Override
+            public String getDescription() {
+                return "openTCS driver for Kecong (科聪) MRC/FRC series AGV controllers via UDP protocol V2.0";
+            }
+
+            @Override
+            public boolean isSimVehicleCommAdapter() { return false; }
+        };
     }
 
     @Override

@@ -47,7 +47,7 @@ This driver integrates Kecong AGV controllers with the [openTCS](https://www.ope
 
 - **Java 11** or higher
 - **Maven 3.6+**
-- **openTCS 5.x** (tested with 5.11.0)
+- **openTCS 7.x** (tested with 7.2.1)
 - Kecong controller with **navigation program V3.1.18+** and **firmware V5.0.46+**
 
 ## Quick Start
