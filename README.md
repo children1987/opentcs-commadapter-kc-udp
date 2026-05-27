@@ -408,5 +408,3 @@ MIT License. See LICENSE file for details.
 4. Submit a pull request
 
 ---
-
-**Made for Kecong MRC/FRC series controllers · Compatible with openTCS 7.x**
