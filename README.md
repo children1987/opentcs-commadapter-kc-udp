@@ -147,29 +147,29 @@ For custom mappings, add the property `kecong:pointId` to individual points.
 
 ```
 ┌──────────────────────────────────────────────────────┐
-│                   openTCS Kernel                      │
-│  (Transport Orders, Routing, Traffic Management)      │
+│                    openTCS Kernel                    │
+│   (Transport Orders, Routing, Traffic Management)    │
 └──────────────────┬───────────────────────────────────┘
-                   │ VehicleCommAdapter interface
+                  │ VehicleCommAdapter interface
 ┌──────────────────▼───────────────────────────────────┐
-│              KecongCommAdapter                        │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │ KecongVehicleProcessModel  (vehicle state)       │ │
-│  └─────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │ KecongUdpChannel  (UDP send/receive)             │ │
-│  └─────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │ KecongMessageEncoder / KecongMessageDecoder      │ │
-│  └─────────────────────────────────────────────────┘ │
-│  ┌─────────────────────────────────────────────────┐ │
-│  │ KecongProtocolFrame  (byte-level encode/decode)  │ │
-│  └─────────────────────────────────────────────────┘ │
+│                  KecongCommAdapter                   │
+│  ┌────────────────────────────────────────────────┐  │
+│  │   KecongVehicleProcessModel  (vehicle state)   │  │
+│  └────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────┐  │
+│  │      KecongUdpChannel  (UDP send/receive)      │  │
+│  └────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────┐  │
+│  │  KecongMessageEncoder / KecongMessageDecoder   │  │
+│  └────────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────┐  │
+│  │KecongProtocolFrame  (byte-level encode/decode) │  │
+│  └────────────────────────────────────────────────┘  │
 └──────────────────┬───────────────────────────────────┘
-                   │ UDP :17804
+                  │ UDP :17804
 ┌──────────────────▼───────────────────────────────────┐
-│              Kecong MRC/FRC Controller                │
-│           (科聪控制器, xRobotProtocol V2.0)           │
+│              Kecong MRC/FRC Controller               │
+│          (科聪控制器, xRobotProtocol V2.0)           │
 └──────────────────────────────────────────────────────┘
 ```
 
