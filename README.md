@@ -398,3 +398,5 @@ MIT License. See LICENSE file for details.
 4. Submit a pull request
 
 ---
+
+English | [中文](./README_zh.md)
