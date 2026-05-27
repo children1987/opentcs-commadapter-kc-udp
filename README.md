@@ -29,6 +29,39 @@ This driver integrates Kecong AGV controllers with the [openTCS](https://www.ope
 | QR code-specific navigation | ✅ | `0xF1`/`0xF5` |
 | Magnetic navigation | ✅ | `0xE0`-`0xE3` |
 
+#### Traffic Management (0x70/0x71)
+
+Resource-based traffic control — the vehicle requests path occupancy before proceeding.
+
+| Direction | Command | Description |
+|-----------|---------|-------------|
+| Request → | `0x70` | Dispatcher polls pending resource requests from vehicle |
+| ← Response | `0x70` | Vehicle returns up to 16 path entries (path ID + endpoint ID) |
+| Request → | `0x71` | Dispatcher notifies success/failure and granted paths |
+| ← Response | `0x71` | Empty (acknowledgment) |
+
+#### QR Code Navigation (0xF1/0xF5)
+
+Navigates via QR code labels on the floor. Supports batch delivery for long paths.
+
+| Command | Use Case | Max Segments | Response |
+|---------|----------|-------------|----------|
+| `0xF1` | Simple short task | 30 (single batch) | None |
+| `0xF5` | Long path (factory-wide) | 2048 total, 30/batch | Echoes task metadata |
+
+**Port**: 17800 (`qrPort`)
+
+#### Magnetic Navigation (0xE0–0xE3)
+
+For AGVs following magnetic tape or magnetic nails on the floor.
+
+| Command | Direction | Description |
+|---------|-----------|-------------|
+| `0xE0` | → | Task download (segments + tagmarks/landmarks) |
+| `0xE1` | → | Task control (pause/resume/cancel/start/clear fault) |
+| `0xE2` | ← | Vehicle status (run state, segment ID, position, heading) |
+| `0xE3` | → | Vehicle relocation to specific segment + offset |
+
 ### Protocol Summary
 
 | Parameter | Value |
@@ -100,49 +133,6 @@ By default, the driver expects openTCS point names to be **numeric IDs** matchin
 - Point named `"120"` → Kecong point ID `120`
 
 For custom mappings, add the property `kecong:pointId` to individual points.
-
-## New Protocols (v1.1.0)
-
-### Traffic Management (0x70/0x71)
-
-Resource-based traffic control — the vehicle requests path occupancy before proceeding.
-
-| Direction | Command | Description |
-|-----------|---------|-------------|
-| Request → | `0x70` | Dispatcher polls pending resource requests from vehicle |
-| ← Response | `0x70` | Vehicle returns up to 16 path entries (path ID + endpoint ID) |
-| Request → | `0x71` | Dispatcher notifies success/failure and granted paths |
-| ← Response | `0x71` | Empty (acknowledgment) |
-
-**Model**: `TrafficResource` with `TrafficResource.Path` (pathId, endpointId)
-
-### QR Code Navigation (0xF1/0xF5)
-
-Navigates via QR code labels on the floor. Supports batch delivery for long paths.
-
-| Command | Use Case | Max Segments | Response |
-|---------|----------|-------------|----------|
-| `0xF1` | Simple short task | 30 (single batch) | None |
-| `0xF5` | Long path (factory-wide) | 2048 total, 30/batch | Echoes task metadata |
-
-**Model**: `QrNavigationTask` with `QrNavigationTask.Segment` (destination QR ID, route ID, dx/dy, heading, speed, rotation limit)
-
-**Port**: 17800 (`qrPort`)
-
-### Magnetic Navigation (0xE0–0xE3)
-
-For AGVs following magnetic tape or magnetic nails on the floor.
-
-| Command | Direction | Description |
-|---------|-----------|-------------|
-| `0xE0` | → | Task download (segments + tagmarks/landmarks) |
-| `0xE1` | → | Task control (pause/resume/cancel/start/clear fault) |
-| `0xE2` | ← | Vehicle status (run state, segment ID, position, heading) |
-| `0xE3` | → | Vehicle relocation to specific segment + offset |
-
-**Models**: `MagneticNavTask` (segments `Landmark` + markers `Tagmark`), `MagneticControl`, `MagneticRelocalize`, `MagneticStatus`
-
-**Port**: 17800 (`qrPort`)
 
 ### Vehicle Properties
 
