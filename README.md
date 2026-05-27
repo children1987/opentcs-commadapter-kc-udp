@@ -136,13 +136,6 @@ By default, the driver expects openTCS point names to be **numeric IDs** matchin
 
 For custom mappings, add the property `kecong:pointId` to individual points.
 
-### Vehicle Properties
-
-| Property | Default | Required For |
-|----------|---------|-------------|
-| `kecong:qrHost` | `192.168.100.200` | QR / Magnetic navigation (if controller uses different IP) |
-| `kecong:qrPort` | `17800` | QR / Magnetic navigation |
-
 ## Architecture
 
 ```

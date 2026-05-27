@@ -136,13 +136,6 @@ cp target/kecong-opentcs-driver-1.0.0.jar /path/to/opentcs/kernel/lib/
 
 如需自定义映射，在路点上添加属性 `kecong:pointId`。
 
-### 车辆属性（导航单元）
-
-| 属性 | 默认值 | 适用场景 |
-|------|--------|----------|
-| `kecong:qrHost` | `192.168.100.200` | 二维码/磁导航（控制器使用不同 IP 时） |
-| `kecong:qrPort` | `17800` | 二维码/磁导航 |
-
 ## 架构
 
 ```
