@@ -409,4 +409,4 @@ MIT License. See LICENSE file for details.
 
 ---
 
-**Made for Kecong MRC/FRC series controllers · Compatible with openTCS 5.x**
+**Made for Kecong MRC/FRC series controllers · Compatible with openTCS 7.x**
