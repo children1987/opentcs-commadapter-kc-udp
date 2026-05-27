@@ -1,5 +1,7 @@
 # 科聪 openTCS 车辆驱动
 
+[English](https://github.com/children1987/opentcs-commadapter-kc-udp/blob/master/README.md) | 中文
+
 [![codecov](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp/branch/master/graph/badge.svg)](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp)
 [![Java CI](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/maven-test.yml/badge.svg)](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/maven-test.yml)
 [![Security Scan](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/security.yml/badge.svg)](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/security.yml)
@@ -399,4 +401,4 @@ MIT 许可证，详见 LICENSE 文件。
 
 ---
 
-[English](./README.md) | 中文
+

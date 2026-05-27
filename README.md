@@ -1,5 +1,7 @@
 # Kecong openTCS Vehicle Driver
 
+English | [中文](https://github.com/children1987/opentcs-commadapter-kc-udp/blob/master/README_zh.md)
+
 [![codecov](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp/branch/master/graph/badge.svg)](https://codecov.io/gh/children1987/opentcs-commadapter-kc-udp)
 [![Java CI](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/maven-test.yml/badge.svg)](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/maven-test.yml)
 [![Security Scan](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/security.yml/badge.svg)](https://github.com/children1987/opentcs-commadapter-kc-udp/actions/workflows/security.yml)
@@ -399,4 +401,4 @@ MIT License. See LICENSE file for details.
 
 ---
 
-English | [中文](./README_zh.md)
+
