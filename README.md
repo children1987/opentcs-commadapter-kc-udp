@@ -19,11 +19,11 @@ This driver integrates Kecong AGV controllers with the [openTCS](https://www.ope
 | Robot status polling | ✅ | `0xAF` |
 | Subscription-based status push | ✅ | `0xB1` |
 | Hybrid navigation (laser + QR code) | ✅ | `0xAE` |
-| Path splicing (路径拼接) navigation | ✅ | `0xAE` mode 0 |
-| Free navigation (自由导航) | ✅ | `0xAE` mode 1 |
+| Path splicing navigation | ✅ | `0xAE` mode 0 |
+| Free navigation | ✅ | `0xAE` mode 1 |
 | Immediate actions (pause/resume/cancel) | ✅ | `0xB2` |
-| Pallet lift (托盘升降) | ✅ | `0xB2` with action `0x16` |
-| Fork lift (叉齿升降) | ✅ | `0xB2` with action `0x12` |
+| Pallet lift | ✅ | `0xB2` with action `0x16` |
+| Fork lift | ✅ | `0xB2` with action `0x12` |
 | Cargo status query | ✅ | `0xB0` |
 | Auto-mode initialization sequence | ✅ | `0x03`/`0x14`/`0x1F` |
 | Error event reporting | ✅ | Parsed from `0xAF` |
@@ -69,7 +69,7 @@ For AGVs following magnetic tape or magnetic nails on the floor.
 | Parameter | Value |
 |-----------|-------|
 | Transport | UDP |
-| Byte order | Little-endian (小端) |
+| Byte order | Little-endian |
 | Communication mode | Request-Response |
 | Navigation port | 17804 |
 | Variable operations port | 17800 |
@@ -162,7 +162,7 @@ For custom mappings, add the property `kecong:pointId` to individual points.
                   │ UDP :17804
 ┌──────────────────▼───────────────────────────────────┐
 │              Kecong MRC/FRC Controller               │
-│          (科聪控制器, xRobotProtocol V2.0)           │
+│          (xRobotProtocol V2.0)           │
 └──────────────────────────────────────────────────────┘
 ```
 
@@ -260,6 +260,7 @@ The driver registers a subscription (`0xB1`) for periodic status updates and ref
 kecong-opentcs-driver/
 ├── pom.xml
 ├── README.md
+├── README_zh.md
 └── src/
     ├── main/java/com/kecong/opentcs/
     │   ├── KecongCommAdapter.java           # Main comm adapter
