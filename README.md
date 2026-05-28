@@ -121,7 +121,7 @@ For each Kecong AGV, add these properties in the openTCS plant model:
 
 | Property | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `kecong:authCode` | **Yes** | — | Protocol auth code (contact Kecong sales) |
+| `kecong:authCode` | No | Built-in default | Protocol auth code. Each controller may have a unique code from Kecong sales; if omitted, the built-in default is used |
 | `kecong:navHost` | No | `192.168.100.178` | Laser/hybrid navigation IP (algorithm unit) |
 | `kecong:navPort` | No | `17804` | Laser/hybrid navigation UDP port |
 | `kecong:qrHost` | No | `192.168.100.200` | QR/magnetic navigation IP (logic unit) |
@@ -357,13 +357,13 @@ java -Dkecong:navHost=192.168.1.100 -Dkecong:authCode=YOUR_AUTH_CODE ...
 ### Robot not responding
 
 1. Verify the controller is reachable: `ping 192.168.100.178`
-2. Check the auth code is correct (contact Kecong sales)
+2. Check the auth code is correct — if you configured `kecong:authCode`, verify it matches the code provided by Kecong for this specific controller; otherwise the built-in default is used
 3. Verify the robot is in the correct navigation mode (laser vs QR)
 4. Check that the navigation program version is ≥ V3.1.18
 
 ### "Auth code error" (0xFF)
 
-The protocol auth code doesn't match. Ensure you're using the correct 16-byte auth code provided by Kecong.
+The protocol auth code doesn't match. If you configured `kecong:authCode`, ensure it matches the code provided by Kecong **for this specific controller** (each controller may have a unique code). If you're using the built-in default and seeing this error, you'll need to obtain the correct auth code from Kecong sales.
 
 ### "Path point count exceeded" (0x83)
 
