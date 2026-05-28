@@ -341,7 +341,10 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             Triple pos = new Triple(
                     (long) (status.getPositionX() * 1000),
                     (long) (status.getPositionY() * 1000), 0);
-            processModel.setPose(new Pose(pos, status.getHeadingAngle()));
+            Pose pose = new Pose(pos, status.getHeadingAngle());
+            processModel.setPose(pose);
+            // Trigger position resolution so openTCS maps precisePosition to a logical Point
+            processModel.positionResolutionRequested(pose);
             processModel.setState(translateAgvState(status));
             processModel.setKecongWorkMode(status.getWorkMode());
             processModel.setKecongAgvState(status.getAgvState());
