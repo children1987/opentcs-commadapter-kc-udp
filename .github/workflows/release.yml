@@ -24,7 +24,7 @@ jobs:
           cache: maven
 
       - name: Build & Test
-        run: mvn -B clean package -pl protocol -DskipTests=false
+        run: mvn -B clean package -DskipTests=false
 
       - name: Extract version from tag
         id: version
@@ -40,19 +40,15 @@ jobs:
             ### 变更
             见 [commits](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
 
-            ### 协议模块 JAR
-            - `kecong-opentcs-protocol-${{ steps.version.outputs.VERSION }}.jar`
+            ### 文件
+            - `kecong-opentcs-protocol-${{ steps.version.outputs.VERSION }}.jar` — 协议模块
+            - `kecong-opentcs-driver-${{ steps.version.outputs.VERSION }}.jar` — 驱动模块
 
-            ### 安装
-            ```bash
-            mvn install:install-file \
-              -Dfile=kecong-opentcs-protocol-${{ steps.version.outputs.VERSION }}.jar \
-              -DgroupId=com.kecong.opentcs \
-              -DartifactId=kecong-opentcs-protocol \
-              -Dversion=${{ steps.version.outputs.VERSION }} \
-              -Dpackaging=jar
-            ```
-          files: protocol/target/kecong-opentcs-protocol-*.jar
+            ### 安装到 openTCS
+            将两个 JAR 复制到 `opentcs-kernel/lib/openTCS-extensions/` 目录下，重启 Kernel 即可。
+          files: |
+            protocol/target/kecong-opentcs-protocol-*.jar
+            adapter/target/kecong-opentcs-driver-*.jar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
