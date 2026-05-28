@@ -26,7 +26,7 @@ jobs:
       - name: Install openTCS 7.2.1 JARs to local repo
         run: |
           # Download openTCS 7.2.1 binary release
-          curl -sL "https://github.com/openTCS/openTCS/releases/download/7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
+          curl -sL "https://github.com/openTCS/openTCS/releases/download/v7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
           unzip -q opentcs.zip
           # Install opentcs-api-base JAR
           mvn install:install-file \
