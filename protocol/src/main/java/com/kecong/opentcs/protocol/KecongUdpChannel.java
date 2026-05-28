@@ -37,6 +37,13 @@ public class KecongUdpChannel implements AutoCloseable {
     public static final String DEFAULT_CONTROLLER_IP = "192.168.100.178";
     /** Default QR/magnetic controller IP (→ logic unit) */
     public static final String DEFAULT_QR_HOST = "192.168.100.200";
+    /** Default protocol auth code (16 bytes, confirmed fixed across all Kecong controllers) */
+    public static final byte[] DEFAULT_AUTH_CODE = new byte[]{
+            (byte) 0xed, (byte) 0x01, (byte) 0xe9, (byte) 0xd2,
+            (byte) 0xb8, (byte) 0xa2, (byte) 0x6b, (byte) 0x4c,
+            (byte) 0x85, (byte) 0x72, (byte) 0x77, (byte) 0xf2,
+            (byte) 0xb2, (byte) 0xcb, (byte) 0x61, (byte) 0xb4
+    };
 
     private final InetAddress controllerAddress;
     private final int controllerPort;
@@ -70,10 +77,17 @@ public class KecongUdpChannel implements AutoCloseable {
     }
 
     /**
-     * Create with default timeout (1000ms).
+     * Create with default timeout (1000ms) and provided auth code.
      */
     public KecongUdpChannel(String controllerIp, int controllerPort, byte[] authCode) throws IOException {
         this(controllerIp, controllerPort, authCode, 1000);
+    }
+
+    /**
+     * Create with default auth code and specified timeout.
+     */
+    public KecongUdpChannel(String controllerIp, int controllerPort) throws IOException {
+        this(controllerIp, controllerPort, DEFAULT_AUTH_CODE, 1000);
     }
 
     /**
@@ -81,6 +95,13 @@ public class KecongUdpChannel implements AutoCloseable {
      */
     public static KecongUdpChannel createNavChannel(String controllerIp, byte[] authCode, int timeoutMs) throws IOException {
         return new KecongUdpChannel(controllerIp, DEFAULT_NAV_PORT, authCode, timeoutMs);
+    }
+
+    /**
+     * Create navigation channel with default port (17804) and default auth code.
+     */
+    public static KecongUdpChannel createNavChannel(String controllerIp, int timeoutMs) throws IOException {
+        return new KecongUdpChannel(controllerIp, DEFAULT_NAV_PORT, DEFAULT_AUTH_CODE, timeoutMs);
     }
 
     /**

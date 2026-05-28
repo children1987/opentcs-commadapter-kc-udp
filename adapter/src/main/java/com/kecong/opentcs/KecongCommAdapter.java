@@ -81,9 +81,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         this.qrHost = qrHost != null ? qrHost : DEFAULT_QR_HOST;
         this.navPort = navPort > 0 ? navPort : DEFAULT_NAV_PORT;
         this.qrPort = qrPort > 0 ? qrPort : DEFAULT_QR_PORT;
-        this.authCode = authCodeStr != null
+        this.authCode = (authCodeStr != null && !authCodeStr.isEmpty())
                 ? Arrays.copyOf(authCodeStr.getBytes(java.nio.charset.StandardCharsets.US_ASCII), 16)
-                : new byte[16];
+                : KecongUdpChannel.DEFAULT_AUTH_CODE.clone();
         this.pollIntervalMs = pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL;
         this.initialized = false;
         this.enabled = false;
