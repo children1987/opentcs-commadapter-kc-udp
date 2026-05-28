@@ -21,7 +21,7 @@ import java.util.Objects;
  *   <li>{@code kecong:navPort} — Laser/hybrid navigation UDP port (default: 17804)</li>
  *   <li>{@code kecong:qrHost} — QR/magnetic navigation controller IP (default: 192.168.100.200)</li>
  *   <li>{@code kecong:qrPort} — QR/magnetic navigation UDP port (default: 17800)</li>
- *   <li>{@code kecong:authCode} — Protocol auth code (required, contact Kecong sales)</li>
+ *   <li>{@code kecong:authCode} — Protocol auth code (optional, default: built-in Kecong standard auth code)</li>
  *   <li>{@code kecong:pollInterval} — Status polling interval in ms (default: 100)</li>
  * </ul>
  *
@@ -71,11 +71,11 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
         int navPort = Integer.parseInt(getProperty(vehicle, "navPort", "17804"));
         int qrPort = Integer.parseInt(getProperty(vehicle, "qrPort", "17800"));
         String qrHost = getProperty(vehicle, "qrHost", "192.168.100.200");
-        String authCode = getProperty(vehicle, "authCode", "");
+        String authCode = getProperty(vehicle, "authCode", null);
         int pollInterval = Integer.parseInt(getProperty(vehicle, "pollInterval", "100"));
 
-        if (authCode.isEmpty()) {
-            LOG.warn("No authCode configured for vehicle '{}', driver may not work", vehicle.getName());
+        if (authCode == null || authCode.isEmpty()) {
+            LOG.info("No authCode configured for vehicle '{}', using default auth code", vehicle.getName());
         }
 
         return new KecongCommAdapter(processModel, navHost, navPort, qrPort, qrHost, authCode, pollInterval);
