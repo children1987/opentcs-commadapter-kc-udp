@@ -23,6 +23,20 @@ jobs:
           distribution: temurin
           cache: maven
 
+      - name: Install openTCS 7.2.1 JARs to local repo
+        run: |
+          # Download openTCS 7.2.1 binary release
+          curl -sL "https://github.com/openTCS/openTCS/releases/download/7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
+          unzip -q opentcs.zip
+          # Install opentcs-api-base JAR
+          mvn install:install-file \
+            -Dfile=opentcs-7.2.1-bin/opentcs-kernel/lib/opentcs-api-base-7.2.1.jar \
+            -DgroupId=org.opentcs -DartifactId=opentcs-api-base -Dversion=7.2.1 -Dpackaging=jar
+          # Install opentcs-kernel JAR
+          mvn install:install-file \
+            -Dfile=opentcs-7.2.1-bin/opentcs-kernel/lib/opentcs-kernel-7.2.1.jar \
+            -DgroupId=org.opentcs -DartifactId=opentcs-kernel -Dversion=7.2.1 -Dpackaging=jar
+
       - name: Build & Test
         run: mvn -B clean package -DskipTests=false
 
