@@ -16,10 +16,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: temurin
 
       - name: Install openTCS api-base to local repo
@@ -32,29 +32,7 @@ jobs:
             -Dpackaging=jar -DgeneratePom=true
 
       - name: Build (skip tests)
-        id: build
-        run: |
-          echo "=== Java version ===" > build.log
-          java -version 2>>build.log
-          echo "=== Maven version ===" >> build.log
-          mvn --version >> build.log 2>&1
-          echo "=== Installed openTCS API JAR ===" >> build.log
-          ls -la ~/.m2/repository/org/opentcs/opentcs-api-base/7.2.1/ >> build.log 2>&1
-          echo "=== Dependency resolve ===" >> build.log
-          mvn -B dependency:resolve -pl adapter >> build.log 2>&1 || true
-          echo "=== Building ===" >> build.log
-          mvn -B -e clean package -Dmaven.test.skip=true >> build.log 2>&1
-          BUILD_EXIT=$?
-          cat build.log
-          exit $BUILD_EXIT
-
-      - name: Upload build log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: maven-build-log
-          path: build.log
-          retention-days: 1
+        run: mvn -B clean package -DskipTests
 
       - name: Extract version
         id: version
