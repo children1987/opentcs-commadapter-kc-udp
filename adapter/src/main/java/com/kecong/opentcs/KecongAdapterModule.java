@@ -1,7 +1,7 @@
 package com.kecong.opentcs;
 
 import com.google.inject.AbstractModule;
-import org.opentcs.drivers.vehicle.management.VehicleCommAdapterFactory;
+import org.opentcs.drivers.vehicle.VehicleCommAdapterFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
