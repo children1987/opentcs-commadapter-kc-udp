@@ -21,31 +21,18 @@ jobs:
         with:
           java-version: '17'
           distribution: temurin
+          cache: maven
 
-      - name: Install openTCS 7.2.1 to local Maven repo
+      - name: Build openTCS from source and install to local repo
         run: |
-          curl -sL "https://github.com/openTCS/openTCS/releases/download/v7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
-          unzip -q opentcs.zip
-          LIB="opentcs-7.2.1-bin/opentcs-kernel/lib"
-          # Install each JAR with a minimal POM (no transitive deps)
-          for jar in "$LIB"/opentcs-*.jar; do
-            filename=$(basename "$jar" .jar)
-            artifactId=$(echo "$filename" | sed 's/-[0-9].*$//')
-            version="7.2.1"
-            # Create minimal POM
-            cat > /tmp/pom.xml <<EOF
-          <project>
-            <modelVersion>4.0.0</modelVersion>
-            <groupId>org.opentcs</groupId>
-            <artifactId>${artifactId}</artifactId>
-            <version>${version}</version>
-          </project>
-          EOF
-            mvn install:install-file -Dfile="$jar" -DpomFile=/tmp/pom.xml -q
-            echo "Installed: $artifactId"
-          done
+          # Clone openTCS 7.2.1
+          git clone --depth 1 --branch v7.2.1 https://github.com/openTCS/openTCS.git opentcs-src
+          cd opentcs-src
+          # Build only the modules we need
+          chmod +x gradlew
+          ./gradlew :opentcs-api-base:publishToMavenLocal :opentcs-kernel:publishToMavenLocal -x test --no-daemon
 
-      - name: Build (skip tests)
+      - name: Build driver
         run: mvn -B clean package -DskipTests
 
       - name: Extract version
