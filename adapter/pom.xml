@@ -45,6 +45,18 @@
             <version>3.0.2</version>
         </dependency>
 
+        <!-- openTCS API classes use jakarta.annotation + jakarta.inject (compileOnly in openTCS, not transitive) -->
+        <dependency>
+            <groupId>jakarta.annotation</groupId>
+            <artifactId>jakarta.annotation-api</artifactId>
+            <version>3.0.0</version>
+        </dependency>
+        <dependency>
+            <groupId>jakarta.inject</groupId>
+            <artifactId>jakarta.inject-api</artifactId>
+            <version>2.0.1</version>
+        </dependency>
+
         <dependency>
             <groupId>com.google.inject</groupId>
             <artifactId>guice</artifactId>
