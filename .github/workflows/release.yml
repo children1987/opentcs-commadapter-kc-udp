@@ -32,17 +32,29 @@ jobs:
             -Dpackaging=jar -DgeneratePom=true
 
       - name: Build (skip tests)
+        id: build
         run: |
-          echo "=== Java version ==="
-          java -version 2>&1
-          echo "=== Maven version ==="
-          mvn --version 2>&1
-          echo "=== Installed openTCS API JAR ==="
-          ls -la ~/.m2/repository/org/opentcs/opentcs-api-base/7.2.1/
-          echo "=== Dependency resolve ==="
-          mvn -B dependency:resolve -pl adapter 2>&1
-          echo "=== Building ==="
-          mvn -B -e clean package -Dmaven.test.skip=true 2>&1
+          echo "=== Java version ===" > build.log
+          java -version 2>>build.log
+          echo "=== Maven version ===" >> build.log
+          mvn --version >> build.log 2>&1
+          echo "=== Installed openTCS API JAR ===" >> build.log
+          ls -la ~/.m2/repository/org/opentcs/opentcs-api-base/7.2.1/ >> build.log 2>&1
+          echo "=== Dependency resolve ===" >> build.log
+          mvn -B dependency:resolve -pl adapter >> build.log 2>&1 || true
+          echo "=== Building ===" >> build.log
+          mvn -B -e clean package -Dmaven.test.skip=true >> build.log 2>&1
+          BUILD_EXIT=$?
+          cat build.log
+          exit $BUILD_EXIT
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: maven-build-log
+          path: build.log
+          retention-days: 1
 
       - name: Extract version
         id: version
