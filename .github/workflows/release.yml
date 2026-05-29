@@ -21,7 +21,6 @@ jobs:
         with:
           java-version: '17'
           distribution: temurin
-          cache: maven
 
       - name: Install openTCS api-base to local repo
         run: |
@@ -40,8 +39,10 @@ jobs:
           mvn --version 2>&1
           echo "=== Installed openTCS API JAR ==="
           ls -la ~/.m2/repository/org/opentcs/opentcs-api-base/7.2.1/
+          echo "=== Dependency resolve ==="
+          mvn -B dependency:resolve -pl adapter 2>&1
           echo "=== Building ==="
-          mvn -B -e clean package -DskipTests
+          mvn -B -e clean package -DskipTests 2>&1
 
       - name: Extract version
         id: version
