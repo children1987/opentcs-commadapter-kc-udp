@@ -46,7 +46,7 @@ jobs:
           done
 
       - name: Build (skip tests)
-        run: mvn -B clean package -DskipTests -o
+        run: mvn -B clean package -DskipTests
 
       - name: Extract version
         id: version
