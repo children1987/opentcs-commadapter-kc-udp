@@ -47,13 +47,13 @@ jobs:
 
             ### 文件
             - `kecong-opentcs-protocol-${{ steps.version.outputs.VERSION }}.jar` — 协议模块
-            - `kecong-opentcs-driver-${{ steps.version.outputs.VERSION }}.jar` — 驱动模块
+            - `kecong-opentcs-adapter-${{ steps.version.outputs.VERSION }}.jar` — 驱动模块
 
             ### 安装
             将两个 JAR 复制到 `opentcs-kernel/lib/openTCS-extensions/` 目录下，重启 Kernel 即可。
           files: |
             protocol/target/kecong-opentcs-protocol-*.jar
-            adapter/target/kecong-opentcs-driver-*.jar
+            adapter/target/kecong-opentcs-adapter-*.jar
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
