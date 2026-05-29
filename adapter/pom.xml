@@ -33,11 +33,6 @@
             <artifactId>opentcs-api-base</artifactId>
             <version>${opentcs.version}</version>
         </dependency>
-        <dependency>
-            <groupId>org.opentcs</groupId>
-            <artifactId>opentcs-kernel</artifactId>
-            <version>${opentcs.version}</version>
-        </dependency>
 
         <dependency>
             <groupId>org.slf4j</groupId>

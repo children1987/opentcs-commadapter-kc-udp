@@ -23,16 +23,16 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Build openTCS from source and install to local repo
+      - name: Install openTCS api-base to local repo
         run: |
-          # Clone openTCS 7.2.1
-          git clone --depth 1 --branch v7.2.1 https://github.com/openTCS/openTCS.git opentcs-src
-          cd opentcs-src
-          # Build only the modules we need
-          chmod +x gradlew
-          ./gradlew :opentcs-api-base:publishToMavenLocal :opentcs-kernel:publishToMavenLocal -x test --no-daemon
+          curl -sL "https://github.com/openTCS/openTCS/releases/download/v7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
+          unzip -q opentcs.zip
+          mvn install:install-file \
+            -Dfile=opentcs-7.2.1-bin/opentcs-kernel/lib/opentcs-api-base-7.2.1.jar \
+            -DgroupId=org.opentcs -DartifactId=opentcs-api-base -Dversion=7.2.1 \
+            -Dpackaging=jar -DgeneratePom=true
 
-      - name: Build driver
+      - name: Build (skip tests)
         run: mvn -B clean package -DskipTests
 
       - name: Extract version
