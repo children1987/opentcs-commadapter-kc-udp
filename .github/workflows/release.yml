@@ -23,18 +23,14 @@ jobs:
           distribution: temurin
           cache: maven
 
-      - name: Install openTCS 7.2.1 to local Maven repo
+      - name: Download openTCS 7.2.1 and install to local repo
         run: |
-          # Download openTCS 7.2.1 binary release
           curl -sL "https://github.com/openTCS/openTCS/releases/download/v7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
           unzip -q opentcs.zip
           LIB="opentcs-7.2.1-bin/opentcs-kernel/lib"
-          # Install all openTCS JARs from lib directory
           for jar in "$LIB"/opentcs-*.jar; do
             filename=$(basename "$jar" .jar)
-            # Extract artifactId from filename (e.g., opentcs-api-base-7.2.1 -> opentcs-api-base)
             artifactId=$(echo "$filename" | sed 's/-[0-9].*$//')
-            echo "Installing: $artifactId from $jar"
             mvn install:install-file \
               -Dfile="$jar" \
               -DgroupId=org.opentcs \
@@ -42,11 +38,11 @@ jobs:
               -Dversion=7.2.1 \
               -Dpackaging=jar \
               -DgeneratePom=true \
-              -q || true
+              -q 2>/dev/null || true
           done
 
-      - name: Build & Test
-        run: mvn -B clean package -DskipTests=false -Dmaven.test.failure.ignore=true
+      - name: Build (skip tests - CI already validates)
+        run: mvn -B clean package -DskipTests
 
       - name: Extract version from tag
         id: version
@@ -57,7 +53,7 @@ jobs:
         with:
           name: "v${{ steps.version.outputs.VERSION }}"
           body: |
-            ## 🚀 openTCS Kecong UDP Driver v${{ steps.version.outputs.VERSION }}
+            ## openTCS Kecong UDP Driver v${{ steps.version.outputs.VERSION }}
 
             ### 变更
             见 [commits](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
