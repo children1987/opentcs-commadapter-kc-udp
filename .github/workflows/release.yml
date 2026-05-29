@@ -33,7 +33,15 @@ jobs:
             -Dpackaging=jar -DgeneratePom=true
 
       - name: Build (skip tests)
-        run: mvn -B clean package -DskipTests
+        run: |
+          echo "=== Java version ==="
+          java -version 2>&1
+          echo "=== Maven version ==="
+          mvn --version 2>&1
+          echo "=== Installed openTCS API JAR ==="
+          ls -la ~/.m2/repository/org/opentcs/opentcs-api-base/7.2.1/
+          echo "=== Building ==="
+          mvn -B -e clean package -DskipTests
 
       - name: Extract version
         id: version
