@@ -6,7 +6,7 @@ on:
       - 'v*'
 
 jobs:
-  release:
+  build-and-release:
     name: Build & Release
     runs-on: ubuntu-latest
     permissions:
@@ -21,30 +21,34 @@ jobs:
         with:
           java-version: '17'
           distribution: temurin
-          cache: maven
 
-      - name: Download openTCS 7.2.1 and install to local repo
+      - name: Install openTCS 7.2.1 to local Maven repo
         run: |
           curl -sL "https://github.com/openTCS/openTCS/releases/download/v7.2.1/opentcs-7.2.1-bin.zip" -o opentcs.zip
           unzip -q opentcs.zip
           LIB="opentcs-7.2.1-bin/opentcs-kernel/lib"
+          # Install each JAR with a minimal POM (no transitive deps)
           for jar in "$LIB"/opentcs-*.jar; do
             filename=$(basename "$jar" .jar)
             artifactId=$(echo "$filename" | sed 's/-[0-9].*$//')
-            mvn install:install-file \
-              -Dfile="$jar" \
-              -DgroupId=org.opentcs \
-              -DartifactId="$artifactId" \
-              -Dversion=7.2.1 \
-              -Dpackaging=jar \
-              -DgeneratePom=true \
-              -q 2>/dev/null || true
+            version="7.2.1"
+            # Create minimal POM
+            cat > /tmp/pom.xml <<EOF
+          <project>
+            <modelVersion>4.0.0</modelVersion>
+            <groupId>org.opentcs</groupId>
+            <artifactId>${artifactId}</artifactId>
+            <version>${version}</version>
+          </project>
+          EOF
+            mvn install:install-file -Dfile="$jar" -DpomFile=/tmp/pom.xml -q
+            echo "Installed: $artifactId"
           done
 
-      - name: Build (skip tests - CI already validates)
-        run: mvn -B clean package -DskipTests
+      - name: Build (skip tests)
+        run: mvn -B clean package -DskipTests -o
 
-      - name: Extract version from tag
+      - name: Extract version
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
@@ -55,14 +59,11 @@ jobs:
           body: |
             ## openTCS Kecong UDP Driver v${{ steps.version.outputs.VERSION }}
 
-            ### 变更
-            见 [commits](https://github.com/${{ github.repository }}/commits/${{ github.ref_name }})
-
             ### 文件
             - `kecong-opentcs-protocol-${{ steps.version.outputs.VERSION }}.jar` — 协议模块
             - `kecong-opentcs-driver-${{ steps.version.outputs.VERSION }}.jar` — 驱动模块
 
-            ### 安装到 openTCS
+            ### 安装
             将两个 JAR 复制到 `opentcs-kernel/lib/openTCS-extensions/` 目录下，重启 Kernel 即可。
           files: |
             protocol/target/kecong-opentcs-protocol-*.jar
