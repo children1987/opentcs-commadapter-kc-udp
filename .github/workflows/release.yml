@@ -42,7 +42,7 @@ jobs:
           echo "=== Dependency resolve ==="
           mvn -B dependency:resolve -pl adapter 2>&1
           echo "=== Building ==="
-          mvn -B -e clean package -DskipTests 2>&1
+          mvn -B -e clean package -Dmaven.test.skip=true 2>&1
 
       - name: Extract version
         id: version
