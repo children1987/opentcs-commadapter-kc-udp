@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.Map;
 import java.util.Objects;
 
@@ -30,7 +31,8 @@ import java.util.Objects;
  * {@code <adapter factoryClass="com.kecong.opentcs.KecongCommAdapterFactory"/>}
  * </pre>
  */
-public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
+public class KecongCommAdapterFactory implements VehicleCommAdapterFactory, Serializable {
+    private static final long serialVersionUID = 1L;
 
     private static final Logger LOG = LoggerFactory.getLogger(KecongCommAdapterFactory.class);
 
@@ -83,15 +85,17 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory {
 
     @Override
     public VehicleCommAdapterDescription getDescription() {
-        return new VehicleCommAdapterDescription() {
-            @Override
-            public String getDescription() {
-                return "openTCS driver for Kecong (科聪) MRC/FRC series AGV controllers via UDP protocol V2.0";
-            }
+        return new SerializableDescription();
+    }
 
-            @Override
-            public boolean isSimVehicleCommAdapter() { return false; }
-        };
+    private static class SerializableDescription extends VehicleCommAdapterDescription {
+        @Override
+        public String getDescription() {
+            return "openTCS driver for Kecong (科聪) MRC/FRC series AGV controllers via UDP protocol V2.0";
+        }
+
+        @Override
+        public boolean isSimVehicleCommAdapter() { return false; }
     }
 
     @Override
