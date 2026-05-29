@@ -6,8 +6,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.opentcs.data.model.Vehicle;
-import org.opentcs.data.model.Point;
-import org.opentcs.data.model.Triple;
 
 /**
  * Tests for KecongVehicleProcessModel.
@@ -27,7 +25,7 @@ class KecongVehicleProcessModelTest {
     @Test
     @DisplayName("Vehicle name is set from constructor")
     void testVehicleName() {
-        assertEquals("TestVehicle-1", model.getVehicleName());
+        assertEquals("TestVehicle-1", model.getName());
     }
 
     @Test
@@ -113,35 +111,33 @@ class KecongVehicleProcessModelTest {
     @Test
     @DisplayName("Set vehicle state updates process model")
     void testSetVehicleState() {
-        model.setVehicleState(Vehicle.State.IDLE);
-        assertEquals(Vehicle.State.IDLE, model.getVehicleState());
+        model.setState(Vehicle.State.IDLE);
+        assertEquals(Vehicle.State.IDLE, model.getState());
 
-        model.setVehicleState(Vehicle.State.EXECUTING);
-        assertEquals(Vehicle.State.EXECUTING, model.getVehicleState());
+        model.setState(Vehicle.State.EXECUTING);
+        assertEquals(Vehicle.State.EXECUTING, model.getState());
 
-        model.setVehicleState(Vehicle.State.ERROR);
-        assertEquals(Vehicle.State.ERROR, model.getVehicleState());
+        model.setState(Vehicle.State.ERROR);
+        assertEquals(Vehicle.State.ERROR, model.getState());
     }
 
     @Test
     @DisplayName("Set vehicle position")
     void testSetVehiclePosition() {
-        Triple pos = new Triple(1000, 2000, 0);
-        model.setVehiclePosition(pos);
-        assertEquals(pos, model.getVehiclePosition());
+        model.setPosition("Point-42");
+        assertEquals("Point-42", model.getPosition());
     }
 
     @Test
     @DisplayName("Set vehicle energy level")
     void testSetVehicleEnergyLevel() {
-        model.setVehicleEnergyLevel(85);
-        assertEquals(85, model.getVehicleEnergyLevel());
+        model.setEnergyLevel(85);
+        assertEquals(85, model.getEnergyLevel());
     }
 
     @Test
     @DisplayName("Default property values for unset attributes")
     void testDefaultPropertyValues() {
-        // When no property set, getters should return defaults
         assertEquals(0, model.getConfidence());
         assertEquals(0, model.getKecongWorkMode());
         assertEquals(0, model.getKecongAgvState());
