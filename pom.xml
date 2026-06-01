@@ -22,7 +22,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <junit.version>5.10.1</junit.version>
         <mockito.version>5.23.0</mockito.version>
-        <slf4j.version>2.0.9</slf4j.version>
+        <slf4j.version>2.0.18</slf4j.version>
         <!-- Security overrides for transitive dependencies -->
         <snakeyaml.version>2.0</snakeyaml.version>
         <json.version>20231013</json.version>
