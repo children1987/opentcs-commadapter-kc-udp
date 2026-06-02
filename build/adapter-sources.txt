@@ -1,0 +1,4 @@
+e:/workspace/opentcs/opentcs-commadapter-kc-udp/adapter/src/main/java/com/kecong/opentcs/KecongAdapterModule.java
+e:/workspace/opentcs/opentcs-commadapter-kc-udp/adapter/src/main/java/com/kecong/opentcs/KecongCommAdapter.java
+e:/workspace/opentcs/opentcs-commadapter-kc-udp/adapter/src/main/java/com/kecong/opentcs/KecongCommAdapterFactory.java
+e:/workspace/opentcs/opentcs-commadapter-kc-udp/adapter/src/main/java/com/kecong/opentcs/KecongVehicleProcessModel.java

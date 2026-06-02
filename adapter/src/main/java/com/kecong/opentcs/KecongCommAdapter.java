@@ -55,6 +55,10 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private boolean initialPositionReported;
     private long lastPositionX = Long.MIN_VALUE, lastPositionY = Long.MIN_VALUE;
 
+    // Lift operation tracking
+    private boolean liftPending;
+    private String liftLimitVar; // "Button.TopLimit" or "Button.DownLimit"
+
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String navHost, int navPort, int qrPort, String qrHost,
                              String authCodeStr, int pollIntervalMs, boolean autoInit) {
@@ -90,7 +94,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             if (autoInit) {
                 initializeController();
             } else {
-                LOG.info("autoInit disabled — assuming controller already in auto mode and localized");
+                LOG.info("autoInit disabled - assuming controller already in auto mode and localized");
             }
             pollFuture = scheduler.scheduleAtFixedRate(this::pollRobotStatus, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
             // Subscription (0xB1) not needed for "调度" protocol (0x17 polling)
@@ -106,6 +110,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         if (navChannel != null) { navChannel.close(); navChannel = null; }
         if (qrChannel != null) { qrChannel.close(); qrChannel = null; }
         sentCommands.clear();
+        liftPending = false;
+        liftLimitVar = null;
         processModel.setState(Vehicle.State.UNKNOWN);
     }
     @Override public boolean isEnabled() { return enabled; }
@@ -121,22 +127,51 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         if (sentCommands.size() >= 1) return false;
 
         Route.Step step = cmd.getStep();
+        String op = cmd.getOperation();
         LOG.info("enqueueCommand: stepIdx={}, dest={}, op={}",
-                step.getRouteIndex(), step.getDestinationPoint().getName(), cmd.getOperation());
-
-        byte[] navData = buildNavControlData(cmd);
-        if (navData == null) return false;
+                step.getRouteIndex(), step.getDestinationPoint().getName(), op);
 
         try {
+            // Handle LOAD/UNLOAD via variable writes
+            if ("LOAD".equalsIgnoreCase(op) || "PICKUP".equalsIgnoreCase(op)) {
+                return startLiftOperation(cmd, "Control.LiftUp", "Button.TopLimit");
+            } else if ("UNLOAD".equalsIgnoreCase(op) || "DROPOFF".equalsIgnoreCase(op)) {
+                return startLiftOperation(cmd, "Control.LiftDown", "Button.DownLimit");
+            }
+
+            // Handle NOP as navigation command (0x16)
+            byte[] navData = buildNavControlData(cmd);
+            if (navData == null) return false;
             boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_NAV_CONTROL, navData);
             if (ok) {
                 sentCommands.add(cmd);
                 processModel.setState(Vehicle.State.EXECUTING);
-                LOG.info("Nav task (0x16) dispatched: orderId={}, dest={}", currentOrderId, cmd.getStep().getDestinationPoint().getName());
+                LOG.info("Nav task (0x16) dispatched: orderId={}, dest={}", currentOrderId, step.getDestinationPoint().getName());
                 return true;
             }
         } catch (IOException e) { LOG.error("Dispatch error", e); }
         return false;
+    }
+
+    private boolean startLiftOperation(MovementCommand cmd, String controlVar, String limitVar) throws IOException {
+        LOG.info("Starting lift: {} -> wait {}", controlVar, limitVar);
+        // Write control variable (0x00): 16B name + 1B value
+        byte[] ctrlData = new byte[17];
+        byte[] ctrlBytes = controlVar.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(ctrlBytes, 0, ctrlData, 0, Math.min(ctrlBytes.length, 16));
+        ctrlData[16] = 1; // true
+
+        boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, ctrlData);
+        if (!ok) {
+            LOG.warn("Failed to write {}", controlVar);
+            return false;
+        }
+        sentCommands.add(cmd);
+        liftPending = true;
+        liftLimitVar = limitVar;
+        processModel.setState(Vehicle.State.EXECUTING);
+        LOG.info("Lift command sent, waiting for {}", limitVar);
+        return true;
     }
 
     @Override public boolean canAcceptNextCommand() {
@@ -150,6 +185,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     @Override public synchronized void clearCommandQueue() {
         sentCommands.clear(); currentOrderId = 0; currentTaskKey = 0;
+        liftPending = false; liftLimitVar = null;
     }
 
     @Override public ExplainedBoolean canProcess(@Nonnull TransportOrder order) {
@@ -223,6 +259,26 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
+    private void checkLiftLimit() throws IOException {
+        // Read limit switch variable (0x01 READ_VAR): 16B name → response 16B name + value
+        byte[] readReq = new byte[16];
+        byte[] nameBytes = liftLimitVar.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(nameBytes, 0, readReq, 0, Math.min(nameBytes.length, 16));
+
+        byte[] resp = navChannel.sendAndGetData(KecongCommandCode.CMD_READ_VAR, readReq);
+        if (resp == null || resp.length < 17) return;
+
+        boolean limitReached = resp[16] != 0;
+        if (limitReached) {
+            LOG.info("Lift limit reached: {}", liftLimitVar);
+            MovementCommand cmd = sentCommands.poll();
+            liftPending = false;
+            liftLimitVar = null;
+            processModel.commandExecuted(cmd);
+            initialPositionReported = false;
+        }
+    }
+
     // --- Polling ---
     private void refreshSubscription() {
         if (!enabled || navChannel == null || navChannel.isClosed()) return;
@@ -237,6 +293,12 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private void pollRobotStatus() {
         if (!enabled || navChannel == null || navChannel.isClosed()) return;
         try {
+            // Check limit switches for pending lift operations
+            if (liftPending && liftLimitVar != null) {
+                checkLiftLimit();
+                return; // Don't poll status while waiting for lift
+            }
+
             byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_RUN_STATUS, new byte[0]);
             if (data == null) return;
             RobotStatus st = KecongMessageDecoder.decodeRunStatus(data);
@@ -254,7 +316,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                         || st.isNavTaskFailed());
 
             if (taskFinished) {
-                // AGV arrived (or task failed) — signal kernel
+                // AGV arrived (or task failed) - signal kernel
                 LOG.info("Task completed: orderId={}, navTaskState={}", currentOrderId, st.getNavTaskState());
                 MovementCommand cmd = sentCommands.poll();
                 currentOrderId = 0;
@@ -264,10 +326,10 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 processModel.commandExecuted(cmd);
                 initialPositionReported = false;
             } else if (hasPending) {
-                // Moving — suppress position reports, only update internal state
+                // Moving - suppress position reports, only update internal state
                 processModel.setPose(pose);
             } else {
-                // Idle — report position on first poll or when it actually changes
+                // Idle - report position on first poll or when it actually changes
                 processModel.setPose(pose);
                 boolean posChanged = (px != lastPositionX || py != lastPositionY);
                 if (!initialPositionReported || posChanged) {

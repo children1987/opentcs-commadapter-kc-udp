@@ -1,0 +1,5 @@
+13F 3D:
+
+com\kecong\opentcs\protocol/ KecongActionType.java KecongCommandCode.java KecongExecutionCode.java KecongMessageDecoder.java KecongMessageEncoder.java KecongProtocolFrame.java KecongUdpChannel.java
+com\kecong\opentcs\protocol\model/ MagneticNavTask.java NavigationTask.java QrNavigationTask.java RobotStatus.java TrafficResource.java
+com\kecong\opentcs\util/ ByteBufferUtils.java
