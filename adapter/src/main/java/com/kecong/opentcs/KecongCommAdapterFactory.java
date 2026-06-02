@@ -75,12 +75,17 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory, Seri
         String qrHost = getProperty(vehicle, "qrHost", "192.168.100.200");
         String authCode = getProperty(vehicle, "authCode", null);
         int pollInterval = Integer.parseInt(getProperty(vehicle, "pollInterval", "100"));
+        boolean autoInit = Boolean.parseBoolean(getProperty(vehicle, "autoInit", "false"));
 
         if (authCode == null || authCode.isEmpty()) {
             LOG.info("No authCode configured for vehicle '{}', using default auth code", vehicle.getName());
         }
 
-        return new KecongCommAdapter(processModel, navHost, navPort, qrPort, qrHost, authCode, pollInterval);
+        if (autoInit) {
+            LOG.info("Auto-initialization enabled for vehicle '{}'", vehicle.getName());
+        }
+
+        return new KecongCommAdapter(processModel, navHost, navPort, qrPort, qrHost, authCode, pollInterval, autoInit);
     }
 
     @Override

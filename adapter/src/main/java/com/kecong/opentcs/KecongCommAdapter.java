@@ -41,6 +41,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private final String navHost, qrHost;
     private final int navPort, qrPort, pollIntervalMs;
     private final byte[] authCode;
+    private final boolean autoInit;
 
     private KecongUdpChannel navChannel, qrChannel;
     private ScheduledExecutorService scheduler;
@@ -56,7 +57,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String navHost, int navPort, int qrPort, String qrHost,
-                             String authCodeStr, int pollIntervalMs) {
+                             String authCodeStr, int pollIntervalMs, boolean autoInit) {
         this.processModel = Objects.requireNonNull(processModel);
         this.navHost = navHost != null ? navHost : DEFAULT_NAV_HOST;
         this.qrHost = qrHost != null ? qrHost : DEFAULT_QR_HOST;
@@ -66,6 +67,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 ? Arrays.copyOf(authCodeStr.getBytes(java.nio.charset.StandardCharsets.US_ASCII), 16)
                 : KecongUdpChannel.DEFAULT_AUTH_CODE.clone();
         this.pollIntervalMs = pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL;
+        this.autoInit = autoInit;
     }
 
     @Override public void initialize() {
@@ -84,6 +86,12 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try {
             navChannel = new KecongUdpChannel(navHost, navPort, authCode, pollIntervalMs * 2);
             qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, pollIntervalMs * 2);
+            // Auto-initialize controller if enabled via vehicle property
+            if (autoInit) {
+                initializeController();
+            } else {
+                LOG.info("autoInit disabled — assuming controller already in auto mode and localized");
+            }
             pollFuture = scheduler.scheduleAtFixedRate(this::pollRobotStatus, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
             subscriptionFuture = scheduler.scheduleAtFixedRate(this::refreshSubscription, 0, SUBSCRIPTION_REFRESH_MS, TimeUnit.MILLISECONDS);
             enabled = true;
@@ -152,6 +160,82 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     @Override public void onVehiclePaused(boolean paused) {}
     @Override public void processMessage(@Nonnull VehicleCommAdapterMessage message) {}
+
+    // --- Controller Initialization ---
+    /**
+     * Initialize the real controller before starting normal polling.
+     * Sequence: query position → manual mode → manual position → confirm → auto mode.
+     * This brings localizationStatus from 1(success) to 3(done), allowing nav task execution.
+     */
+    private void initializeController() throws IOException {
+        LOG.info("Initializing controller...");
+
+        // Step 1: Query current position
+        RobotStatus initStatus = null;
+        for (int retry = 0; retry < 5; retry++) {
+            byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+            if (data != null) {
+                initStatus = KecongMessageDecoder.decodeRobotStatus(data);
+                if (initStatus != null) break;
+            }
+            try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
+        }
+        if (initStatus == null) {
+            LOG.warn("Cannot get initial position, skipping controller init");
+            return;
+        }
+        float px = initStatus.getPositionX();
+        float py = initStatus.getPositionY();
+        float heading = initStatus.getHeadingAngle();
+        LOG.info("Controller position: ({}, {}), heading={}", px, py, heading);
+
+        // Step 2: Switch to manual mode (NaviControl=1)
+        LOG.info("Switching to manual mode...");
+        navChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, encodeWriteVar("NaviControl", 1));
+        sleepMs(200);
+
+        // Step 3: Manual positioning
+        LOG.info("Sending manual position...");
+        navChannel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, encodeManualPosition(px, py, heading));
+        sleepMs(200);
+
+        // Step 4: Confirm position (0x1F) — this moves locStatus from 1→3
+        LOG.info("Confirming position...");
+        navChannel.sendAndVerify(KecongCommandCode.CMD_CONFIRM_POSITION, new byte[0]);
+        sleepMs(200);
+
+        // Step 5: Switch to auto mode (NaviControl=3)
+        LOG.info("Switching to auto mode...");
+        navChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, encodeWriteVar("NaviControl", 3));
+        sleepMs(300);
+
+        LOG.info("Controller initialization complete");
+    }
+
+    private static byte[] encodeWriteVar(String name, int value) {
+        byte[] data = new byte[20];
+        byte[] nameBytes = name.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(nameBytes, 0, data, 0, Math.min(nameBytes.length, 16));
+        // little-endian int value at offset 16
+        data[16] = (byte) (value & 0xFF);
+        data[17] = (byte) ((value >> 8) & 0xFF);
+        data[18] = (byte) ((value >> 16) & 0xFF);
+        data[19] = (byte) ((value >> 24) & 0xFF);
+        return data;
+    }
+
+    private static byte[] encodeManualPosition(float x, float y, float heading) {
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(12);
+        buf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        buf.putFloat(x);
+        buf.putFloat(y);
+        buf.putFloat(heading);
+        return buf.array();
+    }
+
+    private static void sleepMs(long ms) {
+        try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+    }
 
     // --- Polling ---
     private void refreshSubscription() {
@@ -239,19 +323,43 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     // --- Navigation ---
     private NavigationTask buildNavigationTask(MovementCommand cmd) {
         Point dest = cmd.getStep().getDestinationPoint();
+        Point src = cmd.getStep().getSourcePoint();
         if (dest == null) return null;
-        int ptId = extractPointId(dest);
-        TaskPoint tp = TaskPoint.builder().sequenceNumber(0).pointId(ptId).build();
+        int destId = extractPointId(dest);
+        // Build points: start at current position, end at destination
+        TaskPoint[] taskPoints;
+        if (src != null && !src.getName().equals(dest.getName())) {
+            int srcId = extractPointId(src);
+            taskPoints = new TaskPoint[]{
+                TaskPoint.builder().sequenceNumber(0).pointId(srcId).build(),
+                TaskPoint.builder().sequenceNumber(1).pointId(destId).build()
+            };
+        } else {
+            taskPoints = new TaskPoint[]{
+                TaskPoint.builder().sequenceNumber(0).pointId(destId).build()
+            };
+        }
         NavigationTask.Builder b = NavigationTask.builder()
                 .orderId(currentOrderId + 1).taskKey(1)
-                .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE).addPoint(tp);
+                .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE);
+        for (TaskPoint tp : taskPoints) b.addPoint(tp);
         String op = cmd.getOperation();
         if (op != null && !op.isEmpty()) {
             TaskAction act = createAction(op);
             if (act != null) {
-                TaskPoint mod = TaskPoint.builder().sequenceNumber(0).pointId(ptId).addAction(act).build();
-                b = NavigationTask.builder().orderId(currentOrderId + 1).taskKey(1)
-                        .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE).addPoint(mod);
+                // Attach action to the LAST point (destination)
+                int lastSeq = taskPoints.length - 1;
+                NavigationTask.Builder b2 = NavigationTask.builder()
+                        .orderId(currentOrderId + 1).taskKey(1)
+                        .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE);
+                for (int i = 0; i < taskPoints.length; i++) {
+                    TaskPoint tp = taskPoints[i];
+                    if (i == lastSeq) {
+                        tp = TaskPoint.builder().sequenceNumber(i).pointId(tp.getPointId()).addAction(act).build();
+                    }
+                    b2.addPoint(tp);
+                }
+                b = b2;
             }
         }
         return b.build();
