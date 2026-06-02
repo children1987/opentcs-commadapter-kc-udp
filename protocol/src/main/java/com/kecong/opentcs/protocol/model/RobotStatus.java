@@ -22,6 +22,7 @@ public class RobotStatus {
     private float angularVelocity;  // rad/s
     private int workMode;           // 0=standby,1=manual,2=semi-auto,3=auto,4=teach,5=service,6=repair
     private int agvState;           // 0=idle,1=running,2=paused,3=uninitialized,4=manual_confirm,6=nav_failed
+    private int navTaskState;       // 0x17 taskState: 0=NONE,1=WAIT,2=GOING,3=PAUSE,4=DONE,5=FAIL
     private int capabilitySet;      // 0=not set, 1=set
 
     // Task
@@ -117,6 +118,11 @@ public class RobotStatus {
     public boolean isIdle() { return agvState == 0; }
     public boolean isRunning() { return agvState == 1; }
     public boolean isPaused() { return agvState == 2; }
+
+    public int getNavTaskState() { return navTaskState; }
+    public void setNavTaskState(int navTaskState) { this.navTaskState = navTaskState; }
+    public boolean isNavDone() { return navTaskState == 4; }
+    public boolean isNavTaskFailed() { return navTaskState == 5; }
     public boolean isUninitialized() { return agvState == 3; }
     public boolean isNavFailed() { return agvState == 6; }
 

@@ -249,6 +249,28 @@ public class KecongMessageEncoder {
     }
 
     /**
+     * Encode a 0x16 NAV_CONTROL command (per "调度" protocol, 432-byte payload).
+     *
+     * @param pointIdStr  point ID as string (e.g., "1", "2")
+     * @param operation   0=start, 1=cancel, 2=pause, 3=resume, 4=create+pause
+     * @return encoded byte array (432 bytes)
+     */
+    public static byte[] encodeNavControl(String pointIdStr, int operation) {
+        byte[] payload = new byte[432];
+        payload[0] = (byte) operation;      // operation
+        payload[1] = 0;                     // nav_mode: 0=to path point
+        payload[2] = 0;                     // specify_path: 0=no
+        payload[3] = 0;                     // traffic: 0=off
+
+        // Point ID as ASCII string, padded to 8 bytes
+        byte[] ptBytes = pointIdStr.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        int copyLen = Math.min(ptBytes.length, 8);
+        System.arraycopy(ptBytes, 0, payload, 4, copyLen);
+
+        return payload;
+    }
+
+    /**
      * Encode a simple request with no data payload (e.g., query robot status 0xAF).
      */
     public static byte[] encodeEmptyRequest() {

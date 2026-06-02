@@ -93,7 +93,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 LOG.info("autoInit disabled — assuming controller already in auto mode and localized");
             }
             pollFuture = scheduler.scheduleAtFixedRate(this::pollRobotStatus, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
-            subscriptionFuture = scheduler.scheduleAtFixedRate(this::refreshSubscription, 0, SUBSCRIPTION_REFRESH_MS, TimeUnit.MILLISECONDS);
+            // Subscription (0xB1) not needed for "调度" protocol (0x17 polling)
+            // subscriptionFuture = scheduler.scheduleAtFixedRate(this::refreshSubscription, 0, SUBSCRIPTION_REFRESH_MS, TimeUnit.MILLISECONDS);
             enabled = true;
         } catch (IOException e) { LOG.error("Enable failed", e); }
     }
@@ -123,18 +124,15 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         LOG.info("enqueueCommand: stepIdx={}, dest={}, op={}",
                 step.getRouteIndex(), step.getDestinationPoint().getName(), cmd.getOperation());
 
-        NavigationTask task = buildNavigationTask(cmd);
-        if (task == null) return false;
-        currentOrderId = task.getOrderId();
-        currentTaskKey = task.getTaskKey();
+        byte[] navData = buildNavControlData(cmd);
+        if (navData == null) return false;
 
         try {
-            byte[] taskData = KecongMessageEncoder.encodeNavigationTask(task);
-            boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_HYBRID_NAV_TASK, taskData);
+            boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_NAV_CONTROL, navData);
             if (ok) {
                 sentCommands.add(cmd);
                 processModel.setState(Vehicle.State.EXECUTING);
-                LOG.info("Nav task dispatched: orderId={}, {} points", currentOrderId, task.getPoints().size());
+                LOG.info("Nav task (0x16) dispatched: orderId={}, dest={}", currentOrderId, cmd.getStep().getDestinationPoint().getName());
                 return true;
             }
         } catch (IOException e) { LOG.error("Dispatch error", e); }
@@ -173,9 +171,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         // Step 1: Query current position
         RobotStatus initStatus = null;
         for (int retry = 0; retry < 5; retry++) {
-            byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+            byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_RUN_STATUS, new byte[0]);
             if (data != null) {
-                initStatus = KecongMessageDecoder.decodeRobotStatus(data);
+                initStatus = KecongMessageDecoder.decodeRunStatus(data);
                 if (initStatus != null) break;
             }
             try { Thread.sleep(200); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
@@ -184,52 +182,40 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             LOG.warn("Cannot get initial position, skipping controller init");
             return;
         }
-        float px = initStatus.getPositionX();
-        float py = initStatus.getPositionY();
-        float heading = initStatus.getHeadingAngle();
+        double px = initStatus.getPositionX();
+        double py = initStatus.getPositionY();
+        double heading = initStatus.getHeadingAngle();
         LOG.info("Controller position: ({}, {}), heading={}", px, py, heading);
 
-        // Step 2: Switch to manual mode (NaviControl=1)
+        // Step 2: Switch to manual mode (0x11: 4-byte payload)
         LOG.info("Switching to manual mode...");
-        navChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, encodeWriteVar("NaviControl", 1));
+        navChannel.sendAndVerify(KecongCommandCode.CMD_AUTO_MANUAL_SWITCH, new byte[]{0, 0, 0, 0});
         sleepMs(200);
 
-        // Step 3: Manual positioning
+        // Step 3: Manual positioning (0x14: DOUBLE format, 24 bytes)
         LOG.info("Sending manual position...");
-        navChannel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, encodeManualPosition(px, py, heading));
-        sleepMs(200);
+        navChannel.sendAndVerify(KecongCommandCode.CMD_MANUAL_POSITION, encodeManualPositionDouble(px, py, heading));
+        sleepMs(400);
 
-        // Step 4: Confirm position (0x1F) — this moves locStatus from 1→3
+        // Step 4: Confirm position (0x1F)
         LOG.info("Confirming position...");
         navChannel.sendAndVerify(KecongCommandCode.CMD_CONFIRM_POSITION, new byte[0]);
         sleepMs(200);
 
-        // Step 5: Switch to auto mode (NaviControl=3)
+        // Step 5: Switch to auto mode (0x11: 4-byte payload)
         LOG.info("Switching to auto mode...");
-        navChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, encodeWriteVar("NaviControl", 3));
+        navChannel.sendAndVerify(KecongCommandCode.CMD_AUTO_MANUAL_SWITCH, new byte[]{1, 0, 0, 0});
         sleepMs(300);
 
         LOG.info("Controller initialization complete");
     }
 
-    private static byte[] encodeWriteVar(String name, int value) {
-        byte[] data = new byte[20];
-        byte[] nameBytes = name.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
-        System.arraycopy(nameBytes, 0, data, 0, Math.min(nameBytes.length, 16));
-        // little-endian int value at offset 16
-        data[16] = (byte) (value & 0xFF);
-        data[17] = (byte) ((value >> 8) & 0xFF);
-        data[18] = (byte) ((value >> 16) & 0xFF);
-        data[19] = (byte) ((value >> 24) & 0xFF);
-        return data;
-    }
-
-    private static byte[] encodeManualPosition(float x, float y, float heading) {
-        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(12);
+    private static byte[] encodeManualPositionDouble(double x, double y, double heading) {
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(24);
         buf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        buf.putFloat(x);
-        buf.putFloat(y);
-        buf.putFloat(heading);
+        buf.putDouble(x);
+        buf.putDouble(y);
+        buf.putDouble(heading);
         return buf.array();
     }
 
@@ -251,9 +237,9 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private void pollRobotStatus() {
         if (!enabled || navChannel == null || navChannel.isClosed()) return;
         try {
-            byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
+            byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_RUN_STATUS, new byte[0]);
             if (data == null) return;
-            RobotStatus st = KecongMessageDecoder.decodeRobotStatus(data);
+            RobotStatus st = KecongMessageDecoder.decodeRunStatus(data);
             if (st == null) return;
 
             long px = (long) (st.getPositionX() * 1000);
@@ -261,11 +247,15 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             Pose pose = new Pose(new Triple(px, py, 0), st.getHeadingAngle());
 
             boolean hasPending = !sentCommands.isEmpty();
-            boolean taskFinished = hasPending && (st.getOrderId() == 0 || st.getOrderId() != currentOrderId);
+            boolean taskFinished = hasPending
+                    && (st.getOrderId() == 0
+                        || st.getOrderId() != currentOrderId
+                        || st.isNavDone()
+                        || st.isNavTaskFailed());
 
             if (taskFinished) {
-                // AGV arrived — signal kernel
-                LOG.info("Task completed (async): orderId={}", currentOrderId);
+                // AGV arrived (or task failed) — signal kernel
+                LOG.info("Task completed: orderId={}, navTaskState={}", currentOrderId, st.getNavTaskState());
                 MovementCommand cmd = sentCommands.poll();
                 currentOrderId = 0;
                 currentTaskKey = 0;
@@ -282,6 +272,11 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 boolean posChanged = (px != lastPositionX || py != lastPositionY);
                 if (!initialPositionReported || posChanged) {
                     processModel.positionResolutionRequested(pose);
+                    if (!initialPositionReported) {
+                        // Request integration on first successful position report
+                        processModel.integrationLevelChangeRequested(
+                                org.opentcs.data.model.Vehicle.IntegrationLevel.TO_BE_UTILIZED);
+                    }
                     initialPositionReported = true;
                     lastPositionX = px;
                     lastPositionY = py;
@@ -320,13 +315,26 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         }
     }
 
-    // --- Navigation ---
+    // --- Navigation (0x16 NAV_CONTROL per "调度" protocol) ---
+    private byte[] buildNavControlData(MovementCommand cmd) {
+        Point dest = cmd.getStep().getDestinationPoint();
+        if (dest == null) return null;
+        currentOrderId = currentOrderId + 1;
+        String ptId = dest.getName();
+        String op = cmd.getOperation();
+        // 0=start navigation (immediate execution for both NOP and actions)
+        return KecongMessageEncoder.encodeNavControl(ptId, 0);
+    }
+
+    /**
+     * @deprecated Legacy method, replaced by buildNavControlData for 0x16 protocol.
+     */
+    @Deprecated
     private NavigationTask buildNavigationTask(MovementCommand cmd) {
         Point dest = cmd.getStep().getDestinationPoint();
         Point src = cmd.getStep().getSourcePoint();
         if (dest == null) return null;
         int destId = extractPointId(dest);
-        // Build points: start at current position, end at destination
         TaskPoint[] taskPoints;
         if (src != null && !src.getName().equals(dest.getName())) {
             int srcId = extractPointId(src);
@@ -347,7 +355,6 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         if (op != null && !op.isEmpty()) {
             TaskAction act = createAction(op);
             if (act != null) {
-                // Attach action to the LAST point (destination)
                 int lastSeq = taskPoints.length - 1;
                 NavigationTask.Builder b2 = NavigationTask.builder()
                         .orderId(currentOrderId + 1).taskKey(1)

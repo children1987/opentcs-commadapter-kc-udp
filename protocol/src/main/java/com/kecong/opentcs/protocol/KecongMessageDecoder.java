@@ -129,6 +129,74 @@ public class KecongMessageDecoder {
         return MagneticNavTask.fromE2Response(data);
     }
 
+    /**
+     * Decode robot status from a 0x17 QUERY_RUN_STATUS response (per "调度" protocol).
+     * Uses DOUBLE coordinates and different field offsets from the legacy 0xAF format.
+     */
+    public static RobotStatus decodeRunStatus(byte[] data) {
+        if (data == null || data.length < 0xC0) {
+            return null;
+        }
+        ByteBuffer buf = ByteBufferUtils.wrap(data);
+        buf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
+
+        RobotStatus status = new RobotStatus();
+
+        // 0x00 DOUBLE body temp (skip)
+        buf.getDouble();
+        // 0x08 DOUBLE pos_x (m)
+        status.setPositionX((float) buf.getDouble());
+        // 0x10 DOUBLE pos_y (m)
+        status.setPositionY((float) buf.getDouble());
+        // 0x18 DOUBLE heading (rad)
+        status.setHeadingAngle((float) buf.getDouble());
+        // 0x20 DOUBLE battery 0~1
+        status.setBatteryPercent((float) buf.getDouble());
+        // 0x28 U8 blocked, 0x29 U8 charging
+        buf.get(); // blocked
+        buf.get(); // charging
+        // 0x2A U8 run_mode: 0=manual, 1=auto -> map to workMode
+        int runMode = buf.get() & 0xFF;
+        status.setWorkMode(runMode == 1 ? 3 : 1); // 3=AUTO, 1=MANUAL
+        // 0x2B U8 map_loaded
+        buf.get();
+        // 0x2C U32 current target point id
+        status.setOrderId(buf.getInt());
+        // 0x30 DOUBLE velocity_x
+        status.setVelocityX((float) buf.getDouble());
+        // 0x38 DOUBLE angular_velocity
+        status.setAngularVelocity((float) buf.getDouble());
+        // 0x40 DOUBLE battery_voltage
+        status.setBatteryVoltage((float) buf.getDouble());
+        // 0x48 DOUBLE current
+        status.setBatteryCurrent((float) buf.getDouble());
+        // 0x50 U8 task_state: 0=none,1=wait,2=going,3=pause,4=done,5=fail
+        int taskState = buf.get() & 0xFF;
+        status.setNavTaskState(taskState);
+        status.setAgvState(taskStateToAgvState(taskState));
+        // 0x51-0x6F reserved + stats (skip to 0x70)
+        buf.position(0x70);
+        // 0x70 U8 loc_status: 0=fail,1=success,2=locating,3=done
+        status.setLocalizationStatus(buf.get() & 0xFF);
+        // 0x71-0x77 reserved (skip to 0xB8 via position)
+        buf.position(0xB8);
+        // 0xB8 FLOAT32 confidence 0~1
+        float conf = buf.getFloat();
+        status.setConfidence((int) (conf * 100));
+
+        return status;
+    }
+
+    private static int taskStateToAgvState(int taskState) {
+        switch (taskState) {
+            case 1: return 0; // WAIT -> IDLE
+            case 2: return 1; // GOING -> RUNNING
+            case 3: return 2; // PAUSE -> PAUSED
+            case 5: return 6; // FAIL -> NAV_FAILED
+            default: return 0; // NONE/DONE -> IDLE
+        }
+    }
+
     public static boolean decodeCargoStatus(byte[] data) {
         if (data == null || data.length == 0) {
             return false;
