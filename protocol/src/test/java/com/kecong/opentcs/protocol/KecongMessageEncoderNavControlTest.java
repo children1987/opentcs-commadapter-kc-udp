@@ -91,7 +91,8 @@ class KecongMessageEncoderNavControlTest {
         for (int i = 0; i < 432; i++) {
             if (data[i] != 0) nonZero++;
         }
-        // op(1) + nav_mode(0) + specify(0) + traffic(0) + pt_id(1) + pad(0s)
-        assertEquals(2, nonZero); // byte[0]=0(op start), byte[4]='1'(0x31)
+        // byte[0]=0(op=start), byte[4]='1'(0x31) → 1 non-zero byte
+        // byte[1..3] are zeros (nav_mode=0, specify=0, traffic=0)
+        assertEquals(1, nonZero, "only point ID '1' (0x31) at byte[4] should be non-zero");
     }
 }
