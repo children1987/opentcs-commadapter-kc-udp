@@ -58,6 +58,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     // Lift operation tracking
     private boolean liftPending;
     private String liftLimitVar; // "Button.TopLimit" or "Button.DownLimit"
+    private long liftStartTime;  // System.currentTimeMillis() when lift started
+    private static final long LIFT_TIMEOUT_MS = 30_000;
 
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String navHost, int navPort, int qrPort, String qrHost,
@@ -89,7 +91,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         if (!initialized || enabled) return;
         try {
             navChannel = new KecongUdpChannel(navHost, navPort, authCode, pollIntervalMs * 2);
-            qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, pollIntervalMs * 2);
+            qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, 1000);
             // Auto-initialize controller if enabled via vehicle property
             if (autoInit) {
                 initializeController();
@@ -134,19 +136,22 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try {
             // Handle LOAD/UNLOAD via variable writes
             if ("LOAD".equalsIgnoreCase(op) || "PICKUP".equalsIgnoreCase(op)) {
-                return startLiftOperation(cmd, "Control.LiftUp", "Button.TopLimit");
+                return startLiftOperation(cmd, "Screen.ForkUp", "Button.TopLimit");
             } else if ("UNLOAD".equalsIgnoreCase(op) || "DROPOFF".equalsIgnoreCase(op)) {
-                return startLiftOperation(cmd, "Control.LiftDown", "Button.DownLimit");
+                return startLiftOperation(cmd, "Screen.ForkDown", "Button.DownLimit");
             }
 
             // Handle NOP as navigation command (0x16)
             byte[] navData = buildNavControlData(cmd);
             if (navData == null) return false;
+            LOG.info("NAV SEND 0x16: dest={} data[{}]={}", step.getDestinationPoint().getName(),
+                    navData.length, bytesToHex(java.util.Arrays.copyOf(navData, Math.min(navData.length, 16))));
             boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_NAV_CONTROL, navData);
+            LOG.info("NAV RESULT: {}", ok ? "SUCCESS" : "FAILED");
             if (ok) {
                 sentCommands.add(cmd);
                 processModel.setState(Vehicle.State.EXECUTING);
-                LOG.info("Nav task (0x16) dispatched: orderId={}, dest={}", currentOrderId, step.getDestinationPoint().getName());
+                LOG.info("NAV DISPATCHED: orderId={}, dest={}", currentOrderId, step.getDestinationPoint().getName());
                 return true;
             }
         } catch (IOException e) { LOG.error("Dispatch error", e); }
@@ -154,23 +159,25 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     }
 
     private boolean startLiftOperation(MovementCommand cmd, String controlVar, String limitVar) throws IOException {
-        LOG.info("Starting lift: {} -> wait {}", controlVar, limitVar);
-        // Write control variable (0x00): 16B name + 1B value
+        LOG.info("LIFT START: {} -> wait {}", controlVar, limitVar);
         byte[] ctrlData = new byte[17];
         byte[] ctrlBytes = controlVar.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         System.arraycopy(ctrlBytes, 0, ctrlData, 0, Math.min(ctrlBytes.length, 16));
         ctrlData[16] = 1; // true
+        LOG.info("LIFT WRITE_VAR port={} cmd=0x00 data[{}]={}", qrPort, ctrlData.length, bytesToHex(ctrlData));
 
-        boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, ctrlData);
+        boolean ok = qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, ctrlData);
+        LOG.info("LIFT WRITE_VAR result: {}", ok ? "SUCCESS" : "FAILED");
         if (!ok) {
-            LOG.warn("Failed to write {}", controlVar);
+            LOG.warn("LIFT FAILED: WRITE_VAR {} returned non-success or timeout", controlVar);
             return false;
         }
         sentCommands.add(cmd);
         liftPending = true;
         liftLimitVar = limitVar;
+        liftStartTime = System.currentTimeMillis();
         processModel.setState(Vehicle.State.EXECUTING);
-        LOG.info("Lift command sent, waiting for {}", limitVar);
+        LOG.info("LIFT WAITING for limit: {} (timeout={}s)", limitVar, LIFT_TIMEOUT_MS / 1000);
         return true;
     }
 
@@ -260,23 +267,58 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     }
 
     private void checkLiftLimit() throws IOException {
-        // Read limit switch variable (0x01 READ_VAR): 16B name → response 16B name + value
+        // Timeout protection: fail lift if limit not reached within LIFT_TIMEOUT_MS
+        if (System.currentTimeMillis() - liftStartTime > LIFT_TIMEOUT_MS) {
+            LOG.warn("LIFT TIMEOUT: {} not reached after {}s — forcing completion",
+                    liftLimitVar, LIFT_TIMEOUT_MS / 1000);
+            MovementCommand cmd = sentCommands.poll();
+            liftPending = false;
+            liftLimitVar = null;
+            processModel.commandExecuted(cmd);
+            initialPositionReported = false;
+            return;
+        }
+
         byte[] readReq = new byte[16];
         byte[] nameBytes = liftLimitVar.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
         System.arraycopy(nameBytes, 0, readReq, 0, Math.min(nameBytes.length, 16));
 
-        byte[] resp = navChannel.sendAndGetData(KecongCommandCode.CMD_READ_VAR, readReq);
-        if (resp == null || resp.length < 17) return;
+        byte[] resp = qrChannel.sendAndGetData(KecongCommandCode.CMD_READ_VAR, readReq);
+        if (resp == null) {
+            LOG.debug("LIFT READ_VAR {}: timeout/null response", liftLimitVar);
+            return;
+        }
+        // Log raw response for diagnosis
+        String respHex = resp.length > 0 ? bytesToHex(resp) : "(empty)";
+        boolean hasValue = resp.length >= 17;
+        int valByte = hasValue ? (resp[16] & 0xFF) : -1;
+        byte[] nameEcho = resp.length >= 16 ? java.util.Arrays.copyOf(resp, 16) : new byte[0];
+        String nameEchoStr = new String(nameEcho, java.nio.charset.StandardCharsets.US_ASCII).trim();
 
-        boolean limitReached = resp[16] != 0;
-        if (limitReached) {
-            LOG.info("Lift limit reached: {}", liftLimitVar);
+        if (!hasValue) {
+            LOG.warn("LIFT READ_VAR {}: response too short ({}B), no value byte. hex={}",
+                    liftLimitVar, resp.length, respHex);
+            return;
+        }
+        LOG.info("LIFT READ_VAR {}: echoed='{}' valByte={} respLen={} hex={}",
+                liftLimitVar, nameEchoStr, valByte, resp.length, respHex);
+
+        if (valByte != 0) {
+            LOG.info("LIFT DONE: {} limit reached (value={})", liftLimitVar, valByte);
             MovementCommand cmd = sentCommands.poll();
             liftPending = false;
             liftLimitVar = null;
             processModel.commandExecuted(cmd);
             initialPositionReported = false;
         }
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        StringBuilder sb = new StringBuilder(bytes.length * 2);
+        for (byte b : bytes) {
+            sb.append(String.format("%02X", b & 0xFF));
+        }
+        return sb.toString();
     }
 
     // --- Polling ---
@@ -296,13 +338,19 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             // Check limit switches for pending lift operations
             if (liftPending && liftLimitVar != null) {
                 checkLiftLimit();
-                return; // Don't poll status while waiting for lift
+                return;
             }
 
             byte[] data = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_RUN_STATUS, new byte[0]);
-            if (data == null) return;
+            if (data == null) {
+                LOG.trace("POLL 0x17: timeout");
+                return;
+            }
             RobotStatus st = KecongMessageDecoder.decodeRunStatus(data);
-            if (st == null) return;
+            if (st == null) {
+                LOG.warn("POLL 0x17: decode failed, dataLen={}", data.length);
+                return;
+            }
 
             long px = (long) (st.getPositionX() * 1000);
             long py = (long) (st.getPositionY() * 1000);
