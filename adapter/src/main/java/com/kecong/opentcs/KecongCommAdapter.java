@@ -42,6 +42,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private final int navPort, qrPort, pollIntervalMs;
     private final byte[] authCode;
     private final boolean autoInit;
+    private final int fixedEnergyLevel; // 0=use controller value, >0=override
 
     private KecongUdpChannel navChannel, qrChannel;
     private ScheduledExecutorService scheduler;
@@ -63,7 +64,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String navHost, int navPort, int qrPort, String qrHost,
-                             String authCodeStr, int pollIntervalMs, boolean autoInit) {
+                             String authCodeStr, int pollIntervalMs, boolean autoInit,
+                             int fixedEnergyLevel) {
         this.processModel = Objects.requireNonNull(processModel);
         this.navHost = navHost != null ? navHost : DEFAULT_NAV_HOST;
         this.qrHost = qrHost != null ? qrHost : DEFAULT_QR_HOST;
@@ -74,6 +76,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 : KecongUdpChannel.DEFAULT_AUTH_CODE.clone();
         this.pollIntervalMs = pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL;
         this.autoInit = autoInit;
+        this.fixedEnergyLevel = fixedEnergyLevel;
     }
 
     @Override public void initialize() {
@@ -394,7 +397,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             }
 
             processModel.setState(translateState(st));
-            processModel.setEnergyLevel((int) (st.getBatteryPercent() * 100));
+            int energy = fixedEnergyLevel > 0 ? fixedEnergyLevel : (int) (st.getBatteryPercent() * 100);
+            processModel.setEnergyLevel(energy);
             updateKecongProps(st);
 
             if (st.hasError()) {
