@@ -1,9 +1,6 @@
 package com.kecong.opentcs;
 
 import com.kecong.opentcs.protocol.*;
-import com.kecong.opentcs.protocol.model.NavigationTask;
-import com.kecong.opentcs.protocol.model.NavigationTask.TaskAction;
-import com.kecong.opentcs.protocol.model.NavigationTask.TaskPoint;
 import com.kecong.opentcs.protocol.model.RobotStatus;
 import org.opentcs.data.model.Point;
 import org.opentcs.data.model.Pose;
@@ -440,69 +437,4 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         return KecongMessageEncoder.encodeNavControl(ptId, 0);
     }
 
-    /**
-     * @deprecated Legacy method, replaced by buildNavControlData for 0x16 protocol.
-     */
-    @Deprecated
-    private NavigationTask buildNavigationTask(MovementCommand cmd) {
-        Point dest = cmd.getStep().getDestinationPoint();
-        Point src = cmd.getStep().getSourcePoint();
-        if (dest == null) return null;
-        int destId = extractPointId(dest);
-        TaskPoint[] taskPoints;
-        if (src != null && !src.getName().equals(dest.getName())) {
-            int srcId = extractPointId(src);
-            taskPoints = new TaskPoint[]{
-                TaskPoint.builder().sequenceNumber(0).pointId(srcId).build(),
-                TaskPoint.builder().sequenceNumber(1).pointId(destId).build()
-            };
-        } else {
-            taskPoints = new TaskPoint[]{
-                TaskPoint.builder().sequenceNumber(0).pointId(destId).build()
-            };
-        }
-        NavigationTask.Builder b = NavigationTask.builder()
-                .orderId(currentOrderId + 1).taskKey(1)
-                .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE);
-        for (TaskPoint tp : taskPoints) b.addPoint(tp);
-        String op = cmd.getOperation();
-        if (op != null && !op.isEmpty()) {
-            TaskAction act = createAction(op);
-            if (act != null) {
-                int lastSeq = taskPoints.length - 1;
-                NavigationTask.Builder b2 = NavigationTask.builder()
-                        .orderId(currentOrderId + 1).taskKey(1)
-                        .navigationMode(NavigationTask.NAV_MODE_PATH_SPLICE);
-                for (int i = 0; i < taskPoints.length; i++) {
-                    TaskPoint tp = taskPoints[i];
-                    if (i == lastSeq) {
-                        tp = TaskPoint.builder().sequenceNumber(i).pointId(tp.getPointId()).addAction(act).build();
-                    }
-                    b2.addPoint(tp);
-                }
-                b = b2;
-            }
-        }
-        return b.build();
-    }
-
-    private int extractPointId(Point p) {
-        try { return Integer.parseInt(p.getName()); } catch (NumberFormatException e) {
-            Map<String,String> props = p.getProperties();
-            return props.containsKey("kecong:pointId") ? Integer.parseInt(props.get("kecong:pointId"))
-                    : Math.abs(p.getName().hashCode() % 100000);
-        }
-    }
-
-    private TaskAction createAction(String op) {
-        switch (op.toUpperCase()) {
-            case "LOAD": case "PICKUP":
-                return new TaskAction(KecongActionType.ACTION_PALLET_LIFT, KecongActionType.CONCURRENT_SINGLE,
-                        (int)(System.currentTimeMillis() % Integer.MAX_VALUE), new byte[]{1,0,0,0});
-            case "UNLOAD": case "DROPOFF":
-                return new TaskAction(KecongActionType.ACTION_PALLET_LIFT, KecongActionType.CONCURRENT_SINGLE,
-                        (int)(System.currentTimeMillis() % Integer.MAX_VALUE), new byte[]{2,0,0,0});
-            default: return null;
-        }
-    }
 }
