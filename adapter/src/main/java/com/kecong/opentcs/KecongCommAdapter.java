@@ -431,7 +431,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         Point dest = cmd.getStep().getDestinationPoint();
         if (dest == null) return null;
         currentOrderId = currentOrderId + 1;
-        String ptId = dest.getName();
+        // Use kc:markerId (the raw Kecong point ID, e.g. "1") so the
+        // 0x16 command references the controller's own map points, not
+        // the openTCS display name ("KC-1").
+        String ptId = dest.getProperty("kc:markerId");
+        if (ptId == null || ptId.isEmpty()) {
+            ptId = dest.getName();
+        }
         String op = cmd.getOperation();
         // 0=start navigation (immediate execution for both NOP and actions)
         return KecongMessageEncoder.encodeNavControl(ptId, 0);
