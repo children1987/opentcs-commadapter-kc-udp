@@ -73,6 +73,10 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         this.authCode = (authCodeStr != null && !authCodeStr.isEmpty())
                 ? Arrays.copyOf(authCodeStr.getBytes(java.nio.charset.StandardCharsets.US_ASCII), 16)
                 : KecongUdpChannel.DEFAULT_AUTH_CODE.clone();
+        StringBuilder ah = new StringBuilder();
+        for (byte b : this.authCode) ah.append(String.format("%02X", b & 0xFF));
+        LOG.warn("Adapter authCode: {} (from {})", ah.toString(),
+                (authCodeStr != null && !authCodeStr.isEmpty()) ? "property(" + authCodeStr + ")" : "DEFAULT");
         this.pollIntervalMs = pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL;
         this.autoInit = autoInit;
         this.fixedEnergyLevel = fixedEnergyLevel;
@@ -94,6 +98,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try {
             navChannel = new KecongUdpChannel(navHost, navPort, authCode, Math.max(pollIntervalMs * 2, 2000));
             qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, 1000);
+            LOG.info("NAV channel: {}:{}, QR channel: {}:{}, authCode[0]=0x{:02X}",
+                    navHost, navPort, qrHost, qrPort, authCode[0] & 0xFF);
             // Auto-initialize controller if enabled via vehicle property
             if (autoInit) {
                 initializeController();

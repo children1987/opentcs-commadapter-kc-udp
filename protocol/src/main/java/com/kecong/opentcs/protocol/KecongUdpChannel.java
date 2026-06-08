@@ -133,6 +133,13 @@ public class KecongUdpChannel implements AutoCloseable {
         try {
             // Send
             DatagramPacket sendPacket = new DatagramPacket(requestBytes, requestBytes.length, controllerAddress, controllerPort);
+            // Dump request auth code for debugging
+            if (LOG.isWarnEnabled()) {
+                byte[] ra = new byte[16]; System.arraycopy(requestBytes, 0, ra, 0, 16);
+                StringBuilder ah = new StringBuilder();
+                for (byte b : ra) ah.append(String.format("%02X", b & 0xFF));
+                LOG.warn("REQ auth={}", ah.toString());
+            }
             socket.send(sendPacket);
             LOG.trace("Sent: {}", request);
 
