@@ -69,6 +69,13 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory, Seri
 
         KecongVehicleProcessModel processModel = new KecongVehicleProcessModel(vehicle);
 
+        // Pass kernel vehicle service for position resolution
+        var svc = KecongAdapterModule.getVehicleService();
+        if (svc != null) {
+            processModel.setVehicleService(svc);
+            LOG.info("Vehicle service injected for position resolution");
+        }
+
         String navHost = getProperty(vehicle, "navHost", "192.168.100.178");
         int navPort = Integer.parseInt(getProperty(vehicle, "navPort", "17804"));
         int qrPort = Integer.parseInt(getProperty(vehicle, "qrPort", "17800"));

@@ -2,6 +2,7 @@ package com.kecong.opentcs;
 
 import java.util.HashMap;
 import java.util.Map;
+import org.opentcs.components.kernel.services.InternalVehicleService;
 import org.opentcs.data.model.Vehicle;
 import org.opentcs.drivers.vehicle.VehicleProcessModel;
 
@@ -12,6 +13,15 @@ import org.opentcs.drivers.vehicle.VehicleProcessModel;
 public class KecongVehicleProcessModel extends VehicleProcessModel {
 
     private final Map<String, Object> kecongProps = new HashMap<>();
+    private InternalVehicleService vehicleService;
+
+    public void setVehicleService(InternalVehicleService svc) {
+        this.vehicleService = svc;
+    }
+
+    public InternalVehicleService getVehicleService() {
+        return vehicleService;
+    }
 
     public static final String ATTRIBUTE_LOCALIZATION_STATUS = "kecong:localizationStatus";
     public static final String ATTRIBUTE_CONFIDENCE = "kecong:confidence";

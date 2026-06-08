@@ -160,8 +160,9 @@ public class KecongMessageDecoder {
         status.setWorkMode(runMode == 1 ? 3 : 1); // 3=AUTO, 1=MANUAL
         // 0x2B U8 map_loaded
         buf.get();
-        // 0x2C U32 current target point id
-        status.setOrderId(buf.getInt());
+        // 0x2C U32 current target point id — NOT orderId!
+        // Do NOT map to orderId; task completion is detected via navTaskState.
+        buf.getInt();
         // 0x30 DOUBLE velocity_x
         status.setVelocityX((float) buf.getDouble());
         // 0x38 DOUBLE angular_velocity

@@ -266,6 +266,65 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try { Thread.sleep(ms); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
     }
 
+    /**
+     * Resolve position coordinates to the nearest point name.
+     * Also updates the kernel vehicle position via the injected vehicle service.
+     */
+    private String resolvePoint(long px, long py) {
+        String[][] POINTS = {
+            {"0", "0", "0"},
+            {"1", "2000", "0"},
+            {"2", "4000", "0"},
+            {"3", "4000", "2000"},
+            {"4", "4000", "4000"},
+            {"5", "6000", "4000"},
+            {"6", "6000", "0"},
+            {"7", "8000", "0"},
+            {"8", "8000", "-2000"},
+            {"9", "8000", "-4000"},
+            {"10", "10000", "-4000"},
+            {"11", "10000", "0"},
+            {"12", "12000", "0"}
+        };
+        String best = null;
+        double bestDist = Double.MAX_VALUE;
+        for (String[] pt : POINTS) {
+            long dx = px - Long.parseLong(pt[1]);
+            long dy = py - Long.parseLong(pt[2]);
+            double dist = Math.sqrt((double)(dx * dx + dy * dy));
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = pt[0];
+            }
+        }
+        if (best != null && bestDist <= 10000) {
+            // Also update kernel vehicle position
+            try {
+                var vc = ((KecongVehicleProcessModel) processModel).getVehicleService();
+                LOG.info("resolvePoint: px={} py={} best={} vc={}", px, py, best, vc != null ? "OK" : "NULL");
+                if (vc != null) {
+                    var pt = vc.fetch(org.opentcs.data.model.Point.class, best);
+                    LOG.info("resolvePoint: fetch Point({}) = {}", best, pt.isPresent() ? "found" : "NOT FOUND");
+                    if (pt.isPresent()) {
+                        vc.updateVehiclePosition(
+                            processModel.getReference(),
+                            pt.get().getReference());
+                        LOG.info("Position resolved: {} at point {}", poseToString(px, py), best);
+                    }
+                }
+            } catch (Exception e) {
+                LOG.warn("Failed to update kernel vehicle position: {}", e.getMessage(), e);
+            }
+            return best;
+        }
+        LOG.info("resolvePoint: px={} py={} best={} bestDist={} - NO MATCH", px, py, best, bestDist);
+        return null;
+    }
+
+    private String poseToString(long px, long py) {
+        return "(" + px + ", " + py + ")";
+    }
+
     private void checkLiftLimit() throws IOException {
         // Timeout protection: fail lift if limit not reached within LIFT_TIMEOUT_MS
         if (System.currentTimeMillis() - liftStartTime > LIFT_TIMEOUT_MS) {
@@ -357,11 +416,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             Pose pose = new Pose(new Triple(px, py, 0), st.getHeadingAngle());
 
             boolean hasPending = !sentCommands.isEmpty();
+            // Only use nav_state (DONE/FAIL) to detect task completion.
+            // Do NOT compare orderId/currentOrderId — the 0x17 response's
+            // target_pt field was incorrectly mapped to orderId, causing
+            // premature completion when point IDs didn't happen to equal
+            // the sequential command counter.
             boolean taskFinished = hasPending
-                    && (st.getOrderId() == 0
-                        || st.getOrderId() != currentOrderId
-                        || st.isNavDone()
-                        || st.isNavTaskFailed());
+                    && (st.isNavDone() || st.isNavTaskFailed());
 
             if (taskFinished) {
                 // AGV arrived (or task failed) - signal kernel
@@ -383,6 +444,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 if (!initialPositionReported || posChanged) {
                     processModel.positionResolutionRequested(pose);
                     if (!initialPositionReported) {
+                        // Resolve initial position to nearest point and set it
+                        processModel.setPosition(resolvePoint(px, py));
                         // Request integration on first successful position report
                         processModel.integrationLevelChangeRequested(
                                 org.opentcs.data.model.Vehicle.IntegrationLevel.TO_BE_UTILIZED);
