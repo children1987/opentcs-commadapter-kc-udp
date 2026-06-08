@@ -4,6 +4,9 @@ target/
 *.jar
 *.war
 
+# Build output
+build/
+
 # IDE
 .idea/
 *.iml
