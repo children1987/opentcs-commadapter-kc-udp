@@ -183,11 +183,12 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             return false;
         }
         sentCommands.add(cmd);
-        // Store variable name for polling (resolved to Forkup/Forkdown)
+        liftPending = true;
         liftVarName = varName;
+        liftStopRequested = false;
         liftStartTime = System.currentTimeMillis();
         processModel.setState(Vehicle.State.EXECUTING);
-        LOG.info("LIFT WAITING for {} to return to 0 (timeout={}s)", varName, LIFT_TIMEOUT_MS / 1000);
+        LOG.info("LIFT {} started, will auto-stop after {}s (timeout={}s)", varName, LIFT_DURATION_MS / 1000, LIFT_TIMEOUT_MS / 1000);
         return true;
     }
 
