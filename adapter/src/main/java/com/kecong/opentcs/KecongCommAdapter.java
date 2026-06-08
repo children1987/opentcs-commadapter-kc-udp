@@ -53,12 +53,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private boolean initialPositionReported;
     private long lastPositionX = Long.MIN_VALUE, lastPositionY = Long.MIN_VALUE;
 
-    // Lift operation tracking
-    private boolean liftPending;
-    private int liftActionId;    // action ID for 0xB2 immediate action tracking
+    // Lift operation tracking — uses WRITE_VAR Forkup/Forkdown on QR port
+    private String liftVarName;  // "Forkup" or "Forkdown"
+    private boolean liftPending; // true when waiting for lift to complete
     private long liftStartTime;  // System.currentTimeMillis() when lift started
+    private boolean liftStopRequested; // true after stop command has been sent
     private static final long LIFT_TIMEOUT_MS = 30_000;
-    private static int nextLiftActionId = 1000;
+    private static final long LIFT_DURATION_MS = 5_000; // how long to hold Forkup/down=1
 
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String navHost, int navPort, int qrPort, String qrHost,
@@ -114,7 +115,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         if (qrChannel != null) { qrChannel.close(); qrChannel = null; }
         sentCommands.clear();
         liftPending = false;
-        liftActionId = 0;
+        liftVarName = null;
+        liftStopRequested = false;
         processModel.setState(Vehicle.State.UNKNOWN);
     }
     @Override public boolean isEnabled() { return enabled; }
@@ -135,11 +137,12 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 step.getRouteIndex(), step.getDestinationPoint().getName(), op);
 
         try {
-            // Handle LOAD/UNLOAD via 0xB2 immediate action (FORK_LIFT 0x12)
+            // Handle LOAD/UNLOAD via WRITE_VAR (0x00) to QR port
+            // UDP variable names: Forkup (举升), Forkdown (下降) — BOOL type
             if ("LOAD".equalsIgnoreCase(op) || "PICKUP".equalsIgnoreCase(op)) {
-                return startLiftOperation(cmd, "UP", true);
+                return startLiftOperation(cmd, "Forkup");
             } else if ("UNLOAD".equalsIgnoreCase(op) || "DROPOFF".equalsIgnoreCase(op)) {
-                return startLiftOperation(cmd, "DOWN", false);
+                return startLiftOperation(cmd, "Forkdown");
             }
 
             // Handle NOP as navigation command (0x16)
@@ -159,40 +162,26 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         return false;
     }
 
-    private boolean startLiftOperation(MovementCommand cmd, String direction, boolean isLift) throws IOException {
-        // Build 0xB2 FORK_LIFT (0x12) params per protocol V2.1 Appendix 7.1.7:
-        //   [0] FLOAT32 height (m)
-        //   [4] U8 height_type: 1=absolute
-        //   [5] U8 direction: 1=up, 2=down
-        //   [6] U8 composite_cmd: 1=start
-        //   [7] U8 reserved
-        java.nio.ByteBuffer paramBuf = java.nio.ByteBuffer.allocate(8);
-        paramBuf.order(java.nio.ByteOrder.LITTLE_ENDIAN);
-        paramBuf.putFloat(isLift ? 0.5f : 0.0f);  // lift to 0.5m, lower to 0m
-        paramBuf.put((byte) 1);    // absolute height
-        paramBuf.put((byte) (isLift ? 1 : 2));  // 1=up, 2=down
-        paramBuf.put((byte) 1);    // start
-        paramBuf.put((byte) 0);    // reserved
-        byte[] params = paramBuf.array();
+    private boolean startLiftOperation(MovementCommand cmd, String varName) throws IOException {
+        // Send WRITE_VAR (0x00) to QR port: varName=1 (BOOL)
+        byte[] ctrlData = new byte[17];
+        byte[] nameBytes = varName.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(nameBytes, 0, ctrlData, 0, Math.min(nameBytes.length, 16));
+        ctrlData[16] = 1; // true = ON
 
-        int actionId = nextLiftActionId++;
-        byte[] actionData = KecongMessageEncoder.encodeImmediateAction(
-                (short) 0x12, (byte) 0, actionId, params);
-
-        LOG.info("LIFT 0xB2: dir={} actionId={} params[{}]={}", direction, actionId,
-                params.length, bytesToHex(params));
-        boolean ok = navChannel.sendAndVerify(KecongCommandCode.CMD_IMMEDIATE_ACTION, actionData);
-        LOG.info("LIFT 0xB2 result: {}", ok ? "SUCCESS" : "FAILED");
+        LOG.info("LIFT WRITE_VAR: {} = 1 (qrPort={})", varName, qrPort);
+        boolean ok = qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, ctrlData);
+        LOG.info("LIFT WRITE_VAR result: {}", ok ? "SUCCESS" : "FAILED");
         if (!ok) {
-            LOG.warn("LIFT FAILED: 0xB2 returned non-success or timeout");
+            LOG.warn("LIFT FAILED: WRITE_VAR {} returned non-success or timeout", varName);
             return false;
         }
         sentCommands.add(cmd);
-        liftPending = true;
-        liftActionId = actionId;
+        // Store variable name for polling (resolved to Forkup/Forkdown)
+        liftVarName = varName;
         liftStartTime = System.currentTimeMillis();
         processModel.setState(Vehicle.State.EXECUTING);
-        LOG.info("LIFT WAITING for action {} completion (timeout={}s)", actionId, LIFT_TIMEOUT_MS / 1000);
+        LOG.info("LIFT WAITING for {} to return to 0 (timeout={}s)", varName, LIFT_TIMEOUT_MS / 1000);
         return true;
     }
 
@@ -207,7 +196,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
     @Override public synchronized void clearCommandQueue() {
         sentCommands.clear(); currentOrderId = 0; currentTaskKey = 0;
-        liftPending = false; liftActionId = 0;
+        liftPending = false; liftVarName = null; liftStopRequested = false;
     }
 
     @Override public ExplainedBoolean canProcess(@Nonnull TransportOrder order) {
@@ -344,58 +333,54 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     }
 
     private void checkLiftLimit() throws IOException {
-        // Timeout protection
-        if (System.currentTimeMillis() - liftStartTime > LIFT_TIMEOUT_MS) {
-            LOG.warn("LIFT TIMEOUT: action {} not completed after {}s — forcing completion",
-                    liftActionId, LIFT_TIMEOUT_MS / 1000);
+        long elapsed = System.currentTimeMillis() - liftStartTime;
+
+        // Global timeout protection
+        if (elapsed > LIFT_TIMEOUT_MS) {
+            LOG.warn("LIFT TIMEOUT: {} not completed after {}s — forcing completion",
+                    liftVarName, LIFT_TIMEOUT_MS / 1000);
+            stopLift();
+            return;
+        }
+
+        // After LIFT_DURATION_MS, send stop command (retry until confirmed)
+        if (elapsed >= LIFT_DURATION_MS && !liftStopRequested) {
+            LOG.info("LIFT {} duration reached, sending stop (0)", liftVarName);
+            stopLift();
+        }
+
+        // If stop was requested, verify it took effect
+        if (liftStopRequested && elapsed >= LIFT_DURATION_MS + 2000) {
+            // 2 seconds after stop, assume complete
+            LOG.info("LIFT DONE: {} stopped", liftVarName);
             MovementCommand cmd = sentCommands.poll();
             liftPending = false;
-            liftActionId = 0;
+            liftVarName = null;
+            liftStopRequested = false;
             processModel.commandExecuted(cmd);
             initialPositionReported = false;
-            return;
         }
+    }
 
-        // Poll 0xAF QUERY_ROBOT_STATUS to check action completion
-        byte[] resp = navChannel.sendAndGetData(KecongCommandCode.CMD_QUERY_ROBOT_STATUS, new byte[0]);
-        if (resp == null) {
-            LOG.debug("LIFT 0xAF: timeout/null response");
-            return;
-        }
+    private void stopLift() throws IOException {
+        // Send WRITE_VAR var=0 with retries (UDP is unreliable)
+        byte[] ctrlData = new byte[17];
+        byte[] nameBytes = liftVarName.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        System.arraycopy(nameBytes, 0, ctrlData, 0, Math.min(nameBytes.length, 16));
+        ctrlData[16] = 0; // false = OFF
 
-        RobotStatus st = KecongMessageDecoder.decodeRobotStatus(resp);
-        if (st == null) {
-            LOG.debug("LIFT 0xAF: decode failed, dataLen={}", resp.length);
-            return;
-        }
-
-        // Check action statuses for our lift action
-        RobotStatus.ActionStatus[] actions = st.getActionStatuses();
-        if (actions != null) {
-            for (RobotStatus.ActionStatus as : actions) {
-                if (as.getActionId() == liftActionId) {
-                    if (as.isComplete()) {
-                        LOG.info("LIFT DONE: action {} completed", liftActionId);
-                        MovementCommand cmd = sentCommands.poll();
-                        liftPending = false;
-                        liftActionId = 0;
-                        processModel.commandExecuted(cmd);
-                        initialPositionReported = false;
-                    } else if (as.isFailed()) {
-                        LOG.warn("LIFT FAILED: action {} reported failure", liftActionId);
-                        MovementCommand cmd = sentCommands.poll();
-                        liftPending = false;
-                        liftActionId = 0;
-                        processModel.commandExecuted(cmd);
-                        initialPositionReported = false;
-                    } else {
-                        LOG.debug("LIFT action {} status={}", liftActionId, as.getStatus());
-                    }
-                    return;
-                }
+        for (int i = 0; i < 3; i++) {
+            boolean ok = qrChannel.sendAndVerify(KecongCommandCode.CMD_WRITE_VAR, ctrlData);
+            LOG.info("LIFT STOP {} = 0 (attempt {}/3): {}", liftVarName, i + 1, ok ? "OK" : "FAIL");
+            if (ok) {
+                liftStopRequested = true;
+                return;
             }
+            try { Thread.sleep(100); } catch (InterruptedException e) { Thread.currentThread().interrupt(); return; }
         }
-        LOG.debug("LIFT action {} not found in status response yet", liftActionId);
+        // Even if all retries fail, mark as stopped (global timeout will handle if needed)
+        LOG.warn("LIFT STOP {} failed after 3 retries", liftVarName);
+        liftStopRequested = true;
     }
 
     private static String bytesToHex(byte[] bytes) {
@@ -421,7 +406,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         if (!enabled || navChannel == null || navChannel.isClosed()) return;
         try {
             // Check limit switches for pending lift operations
-            if (liftPending && liftActionId != 0) {
+            if (liftPending && liftVarName != null) {
                 checkLiftLimit();
                 return;
             }
