@@ -143,12 +143,16 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 step.getRouteIndex(), step.getDestinationPoint().getName(), op);
 
         try {
-            // Handle LOAD/UNLOAD via WRITE_VAR (0x00) to QR port
-            // UDP variable names: Forkup (举升), Forkdown (下降) — BOOL type
+            // Handle fork operations via WRITE_VAR (0x00) to QR port
+            // UDP variable names: Forkup/Forkdown/Forkforword/Forkback — BOOL type
             if ("LOAD".equalsIgnoreCase(op) || "PICKUP".equalsIgnoreCase(op)) {
                 return startLiftOperation(cmd, "Forkup");
             } else if ("UNLOAD".equalsIgnoreCase(op) || "DROPOFF".equalsIgnoreCase(op)) {
                 return startLiftOperation(cmd, "Forkdown");
+            } else if ("FORK_FWD".equalsIgnoreCase(op)) {
+                return startLiftOperation(cmd, "Forkforword");
+            } else if ("FORK_REV".equalsIgnoreCase(op)) {
+                return startLiftOperation(cmd, "Forkback");
             }
 
             // Handle NOP as navigation command (0x16)
