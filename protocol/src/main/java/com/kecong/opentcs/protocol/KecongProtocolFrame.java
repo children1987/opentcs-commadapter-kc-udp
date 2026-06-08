@@ -86,7 +86,7 @@ public class KecongProtocolFrame {
         if (data.length > MAX_DATA_SIZE) {
             throw new IllegalArgumentException("Data length " + data.length + " exceeds max " + MAX_DATA_SIZE);
         }
-        ByteBuffer buf = ByteBuffer.allocate(HEADER_SIZE + data.length + 4); // +4 safety margin
+        ByteBuffer buf = ByteBuffer.allocate(HEADER_SIZE + data.length);
         buf.order(ByteOrder.LITTLE_ENDIAN);
         buf.put(authCode);
         buf.put(protocolVersion);
