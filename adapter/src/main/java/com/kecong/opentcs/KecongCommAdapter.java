@@ -75,7 +75,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 : KecongUdpChannel.DEFAULT_AUTH_CODE.clone();
         StringBuilder ah = new StringBuilder();
         for (byte b : this.authCode) ah.append(String.format("%02X", b & 0xFF));
-        LOG.warn("Adapter authCode: {} (from {})", ah.toString(),
+        LOG.info("Adapter authCode: {} (from {})", ah.toString(),
                 (authCodeStr != null && !authCodeStr.isEmpty()) ? "property(" + authCodeStr + ")" : "DEFAULT");
         this.pollIntervalMs = pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL;
         this.autoInit = autoInit;
@@ -98,8 +98,8 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         try {
             navChannel = new KecongUdpChannel(navHost, navPort, authCode, Math.max(pollIntervalMs * 2, 2000));
             qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, 1000);
-            LOG.info("NAV channel: {}:{}, QR channel: {}:{}, authCode[0]=0x{:02X}",
-                    navHost, navPort, qrHost, qrPort, authCode[0] & 0xFF);
+            LOG.info("NAV channel: {}:{}, QR channel: {}:{}, authCode[0]=0x{}",
+                    navHost, navPort, qrHost, qrPort, String.format("%02X", authCode[0] & 0xFF));
             // Auto-initialize controller if enabled via vehicle property
             if (autoInit) {
                 initializeController();
@@ -290,19 +290,33 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      */
     private String resolvePoint(long px, long py) {
         String[][] POINTS = {
-            {"0", "0", "0"},
-            {"1", "2000", "0"},
-            {"2", "4000", "0"},
-            {"3", "4000", "2000"},
-            {"4", "4000", "4000"},
-            {"5", "6000", "4000"},
-            {"6", "6000", "0"},
-            {"7", "8000", "0"},
-            {"8", "8000", "-2000"},
-            {"9", "8000", "-4000"},
-            {"10", "10000", "-4000"},
-            {"11", "10000", "0"},
-            {"12", "12000", "0"}
+            {"00", "0", "0"},
+            {"01", "2000", "0"},
+            {"02", "4000", "0"},
+            {"03", "4350", "0"},
+            {"04", "4430", "680"},
+            {"05", "4400", "4000"},
+            {"06", "4000", "4000"},
+            {"07", "3985", "680"},
+            {"08", "6000", "0"},
+            {"09", "6450", "0"},
+            {"10", "6375", "675"},
+            {"11", "6450", "4050"},
+            {"12", "6000", "4000"},
+            {"13", "5925", "675"},
+            {"14", "8000", "0"},
+            {"15", "8030", "-830"},
+            {"16", "8000", "-4000"},
+            {"17", "8400", "-4000"},
+            {"18", "8475", "-830"},
+            {"19", "8400", "0"},
+            {"20", "10000", "0"},
+            {"21", "9975", "-825"},
+            {"22", "10000", "-4000"},
+            {"23", "10350", "-4050"},
+            {"24", "10425", "-975"},
+            {"25", "10350", "0"},
+            {"26", "12000", "0"}
         };
         String best = null;
         double bestDist = Double.MAX_VALUE;

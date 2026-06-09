@@ -134,11 +134,11 @@ public class KecongUdpChannel implements AutoCloseable {
             // Send
             DatagramPacket sendPacket = new DatagramPacket(requestBytes, requestBytes.length, controllerAddress, controllerPort);
             // Dump request auth code for debugging
-            if (LOG.isWarnEnabled()) {
+            if (LOG.isDebugEnabled()) {
                 byte[] ra = new byte[16]; System.arraycopy(requestBytes, 0, ra, 0, 16);
                 StringBuilder ah = new StringBuilder();
                 for (byte b : ra) ah.append(String.format("%02X", b & 0xFF));
-                LOG.warn("REQ auth={}", ah.toString());
+                LOG.debug("REQ auth={}", ah.toString());
             }
             socket.send(sendPacket);
             LOG.trace("Sent: {}", request);
@@ -154,21 +154,21 @@ public class KecongUdpChannel implements AutoCloseable {
                 KecongProtocolFrame response = KecongProtocolFrame.decode(responseData);
                 LOG.trace("Received: {}", response);
                 // Dump first 32 bytes for debugging
-                if (LOG.isWarnEnabled()) {
+                if (LOG.isDebugEnabled()) {
                     StringBuilder hex = new StringBuilder();
                     for (int i = 0; i < Math.min(responseData.length, 32); i++) {
                         hex.append(String.format("%02X ", responseData[i] & 0xFF));
                     }
-                    LOG.warn("Response hex (first 32B): {}", hex.toString().trim());
-                    LOG.warn("  Decoded: cmd=0x{:02X} exec=0x{:02X} dataLen={}",
-                            response.getCommandCode() & 0xFF, response.getExecutionCode() & 0xFF, response.getData().length);
+                    LOG.debug("Response hex (first 32B): {}", hex.toString().trim());
+                    LOG.debug(String.format("  Decoded: cmd=0x%02X exec=0x%02X dataLen=%d",
+                            response.getCommandCode() & 0xFF, response.getExecutionCode() & 0xFF, response.getData().length));
                 }
                 return response;
             } catch (SocketTimeoutException e) {
-                LOG.debug("Timeout waiting for response to cmd=0x{:02X} seq={}", commandCode & 0xFF, seq);
+                LOG.debug("Timeout waiting for response to cmd=0x{} seq={}", String.format("%02X", commandCode & 0xFF), seq);
                 return null;
             } catch (Exception e) {
-                LOG.warn("Error receiving response for cmd=0x{:02X}: {}", commandCode & 0xFF, e.toString());
+                LOG.warn("Error receiving response for cmd=0x{}: {}", String.format("%02X", commandCode & 0xFF), e.toString());
                 return null;
             }
         } finally {
@@ -199,11 +199,11 @@ public class KecongUdpChannel implements AutoCloseable {
     public byte[] sendAndGetData(byte commandCode, byte[] data) throws IOException {
         KecongProtocolFrame response = sendAndReceive(commandCode, data);
         if (response == null) {
-            LOG.warn("sendAndGetData cmd=0x{:02X}: response is NULL (timeout or error)", commandCode & 0xFF);
+            LOG.warn("sendAndGetData cmd=0x{}: response is NULL (timeout or error)", String.format("%02X", commandCode & 0xFF));
             return null;
         }
         if (!KecongExecutionCode.isSuccess(response.getExecutionCode())) {
-            LOG.warn("sendAndGetData cmd=0x{:02X}: exec_code={} (not success)", commandCode & 0xFF, response.getExecutionCode() & 0xFF);
+            LOG.warn("sendAndGetData cmd=0x{}: exec_code={} (not success)", String.format("%02X", commandCode & 0xFF), response.getExecutionCode() & 0xFF);
             return null;
         }
         return response.getData();
