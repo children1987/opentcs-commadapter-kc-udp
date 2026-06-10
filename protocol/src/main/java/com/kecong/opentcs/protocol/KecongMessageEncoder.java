@@ -410,4 +410,57 @@ public class KecongMessageEncoder {
 
         return buf.array();
     }
+
+    /**
+     * Encode a 0x01 READ_VAR request (read single variable).
+     *
+     * <p>Format: [U8×16 variable name (ASCII, zero-padded)]</p>
+     *
+     * <p>Response contains [U8×16 name][U8[] value] — use
+     * {@link com.kecong.opentcs.protocol.KecongMessageDecoder#decodeReadVarResponse(byte[])}
+     * to extract the value bytes.</p>
+     *
+     * @param varName variable name (max 16 ASCII chars)
+     * @return encoded byte array (16 bytes)
+     */
+    public static byte[] encodeReadVar(String varName) {
+        if (varName == null || varName.isEmpty()) {
+            throw new IllegalArgumentException("varName must not be empty");
+        }
+        byte[] nameBytes = varName.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        if (nameBytes.length > 16) {
+            throw new IllegalArgumentException("varName too long: " + varName.length() + " > 16");
+        }
+        byte[] data = new byte[16];
+        System.arraycopy(nameBytes, 0, data, 0, nameBytes.length);
+        return data;
+    }
+
+    /**
+     * Encode a 0x00 WRITE_VAR request (write single variable).
+     *
+     * <p>Format: [U8×16 variable name][U8[] value bytes]</p>
+     *
+     * <p>Response has no data payload (exec=0x00 on success).</p>
+     *
+     * @param varName variable name (max 16 ASCII chars)
+     * @param value   value bytes (depends on variable type: 1=BYTE, 2=WORD, 4=DWORD)
+     * @return encoded byte array
+     */
+    public static byte[] encodeWriteVar(String varName, byte[] value) {
+        if (varName == null || varName.isEmpty()) {
+            throw new IllegalArgumentException("varName must not be empty");
+        }
+        if (value == null) {
+            throw new IllegalArgumentException("value must not be null");
+        }
+        byte[] nameBytes = varName.getBytes(java.nio.charset.StandardCharsets.US_ASCII);
+        if (nameBytes.length > 16) {
+            throw new IllegalArgumentException("varName too long: " + varName.length() + " > 16");
+        }
+        byte[] data = new byte[16 + value.length];
+        System.arraycopy(nameBytes, 0, data, 0, nameBytes.length);
+        System.arraycopy(value, 0, data, 16, value.length);
+        return data;
+    }
 }

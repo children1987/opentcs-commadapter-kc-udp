@@ -204,4 +204,43 @@ public class KecongMessageDecoder {
         }
         return data[0] == (byte) 0x01;
     }
+
+    /**
+     * Decode value bytes from a 0x01 READ_VAR response.
+     *
+     * <p>Response format: [U8×16 variable name][U8[] value bytes].</p>
+     *
+     * <p>Returns the value bytes after the 16-byte name, or null if data is too short.
+     * The caller should interpret the value bytes based on the known variable type
+     * (e.g., BYTE=1B, WORD/UINT=2B, DWORD/DINT=4B).</p>
+     *
+     * <p>Verified on real MRC controller (2026-06-10): AAA response = 16B name + 4B value.</p>
+     *
+     * @param data 0x01 response data payload
+     * @return value bytes (after the 16-byte name), or null if invalid
+     */
+    public static byte[] decodeReadVarResponse(byte[] data) {
+        if (data == null || data.length <= 16) {
+            return null;
+        }
+        int valueLen = data.length - 16;
+        byte[] value = new byte[valueLen];
+        System.arraycopy(data, 16, value, 0, valueLen);
+        return value;
+    }
+
+    /**
+     * Get the variable name from a 0x01 READ_VAR response.
+     *
+     * @param data 0x01 response data payload
+     * @return variable name (trimmed), or null if invalid
+     */
+    public static String decodeReadVarResponseName(byte[] data) {
+        if (data == null || data.length < 16) {
+            return null;
+        }
+        int end = 0;
+        while (end < 16 && data[end] != 0) end++;
+        return new String(data, 0, end, java.nio.charset.StandardCharsets.US_ASCII);
+    }
 }
