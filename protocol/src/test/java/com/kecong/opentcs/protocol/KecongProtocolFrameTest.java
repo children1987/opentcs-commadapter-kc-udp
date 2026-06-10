@@ -25,7 +25,7 @@ class KecongProtocolFrameTest {
                 .build();
 
         byte[] encoded = frame.encode();
-        assertEquals(KecongProtocolFrame.HEADER_SIZE + 3 + 4, encoded.length);
+        assertEquals(KecongProtocolFrame.HEADER_SIZE + 3, encoded.length);
 
         KecongProtocolFrame decoded = KecongProtocolFrame.decode(encoded);
         assertEquals(42, decoded.getSequenceNumber());
@@ -69,7 +69,7 @@ class KecongProtocolFrameTest {
                 .build();
 
         byte[] encoded = frame.encode();
-        assertEquals(KecongProtocolFrame.HEADER_SIZE + 4, encoded.length);
+        assertEquals(KecongProtocolFrame.HEADER_SIZE, encoded.length);
 
         KecongProtocolFrame decoded = KecongProtocolFrame.decode(encoded);
         assertEquals(0, decoded.getDataLength());
@@ -90,7 +90,7 @@ class KecongProtocolFrameTest {
                 .build();
 
         byte[] encoded = frame.encode();
-        assertEquals(KecongProtocolFrame.HEADER_SIZE + 512 + 4, encoded.length);
+        assertEquals(KecongProtocolFrame.HEADER_SIZE + 512, encoded.length);
 
         KecongProtocolFrame decoded = KecongProtocolFrame.decode(encoded);
         assertEquals(512, decoded.getDataLength());
