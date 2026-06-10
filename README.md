@@ -27,6 +27,8 @@ This driver integrates Kecong AGV controllers with the [openTCS](https://www.ope
 | Cargo status query | ✅ | `0xB0` |
 | Auto-mode initialization sequence | ✅ | `0x03`/`0x14`/`0x1F` |
 | Error event reporting | ✅ | Parsed from `0xAF` |
+| Read multiple variable values | ✅ | `0x02` ([docs](docs/protocol-0x02-read-multi-var.md)) |
+| Write multiple variable values | ✅ | `0x03` |
 | Traffic management | ✅ | `0x70`/`0x71` |
 | QR code-specific navigation | ✅ | `0xF1`/`0xF5` |
 | Magnetic navigation | ✅ | `0xE0`-`0xE3` |
@@ -63,6 +65,19 @@ For AGVs following magnetic tape or magnetic nails on the floor.
 | `0xE1` | → | Task control (pause/resume/cancel/start/clear fault) |
 | `0xE2` | ← | Vehicle status (run state, segment ID, position, heading) |
 | `0xE3` | → | Vehicle relocation to specific segment + offset |
+
+#### Variable Operations (0x00–0x03)
+
+Read and write controller variables via port 17800 (QR port). Use `0x02` to batch-read multiple variable members in a single request.
+
+| Command | Direction | Description |
+|---------|-----------|-------------|
+| `0x00` | → | Write single variable |
+| `0x01` | →← | Read single variable (returns full variable area) |
+| `0x02` | →← | Read multiple variable members (verified on real MRC, see [docs](docs/protocol-0x02-read-multi-var.md)) |
+| `0x03` | → | Write multiple variables |
+
+**0x02 verified**: B2GW offset 0x18 DINT = 127080 (2026-06-10).
 
 ### Protocol Summary
 

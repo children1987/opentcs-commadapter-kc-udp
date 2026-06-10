@@ -6,12 +6,17 @@ import com.kecong.opentcs.protocol.model.MagneticNavTask.MagneticRelocalize;
 import com.kecong.opentcs.protocol.model.NavigationTask;
 import com.kecong.opentcs.protocol.model.QrNavigationTask;
 import com.kecong.opentcs.protocol.model.TrafficResource;
+import com.kecong.opentcs.protocol.model.VarReadRequest;
+import com.kecong.opentcs.protocol.model.VarReadRequest.VarMember;
+import com.kecong.opentcs.protocol.model.VarWriteRequest;
+import com.kecong.opentcs.protocol.model.VarWriteMember;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskAction;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPath;
 import com.kecong.opentcs.protocol.model.NavigationTask.TaskPoint;
 import com.kecong.opentcs.util.ByteBufferUtils;
 
 import java.nio.ByteBuffer;
+import java.util.List;
 
 /**
  * Encodes Kecong protocol messages from model objects into byte arrays.
@@ -275,5 +280,134 @@ public class KecongMessageEncoder {
      */
     public static byte[] encodeEmptyRequest() {
         return new byte[0];
+    }
+
+    /**
+     * Encode a 0x02 READ_MULTI_VAR request.
+     *
+     * <p>
+     * Verified protocol format (from real MRC controller, 2026-06-10):
+     * </p>
+     * <pre>
+     * Request:  [U32 count][U32 ValueID][StrValue × N]
+     * StrValue: [U8×16 varName][U32 memberCount][ValueMember × M]
+     * ValueMember: [U16 offset][U16 length]
+     *
+     * Response: [U32 ValueID][U32 dataLen][U8[] values (4B aligned)]
+     * </pre>
+     *
+     * <p>
+     * <b>Important:</b> Count is U32 (4 bytes), ValueID is U32 (4 bytes).
+     * This was verified against a real KeCong MRC controller; the protocol spec
+     * (科聪控制器UDP接口协议说明书V2.0 Section 5.1.3) incorrectly shows count as U8+3B reserved.
+     * </p>
+     *
+     * <h3>Verified test case</h3>
+     * <p>B2GW offset 0x18 DINT == 127080 (0x0001F068).<br>
+     * AAA offset 0 INT16 + offset 2 UINT16 read/write verified.</p>
+     *
+     * <h3>Example</h3>
+     * <pre>{@code
+     * List<VarReadRequest> requests = Arrays.asList(
+     *     new VarReadRequest("AAA", Arrays.asList(
+     *         new VarMember(0, 2),
+     *         new VarMember(2, 2)
+     *     ))
+     * );
+     * byte[] data = KecongMessageEncoder.encodeReadMultiVar(requests, 0);
+     * }</pre>
+     *
+     * @param requests list of variable read requests
+     * @param valueId  arbitrary ID echoed in response (U32)
+     * @return encoded byte array for the 0x02 data payload
+     */
+    public static byte[] encodeReadMultiVar(List<VarReadRequest> requests, int valueId) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("requests must not be empty");
+        }
+
+        // Calculate total size: count(U32) + valueId(U32) + StrValues
+        int totalSize = 8; // count(4) + valueId(4)
+        for (VarReadRequest req : requests) {
+            totalSize += req.getStrValueSize();
+        }
+
+        ByteBuffer buf = ByteBufferUtils.allocate(totalSize);
+        buf.putInt(requests.size());  // U32 count
+        buf.putInt(valueId);          // U32 ValueID
+
+        for (VarReadRequest req : requests) {
+            ByteBufferUtils.putFixedString(buf, req.getVarName(), 16);
+            buf.putInt(req.getMembers().size());
+            for (VarMember m : req.getMembers()) {
+                buf.putShort((short) m.getOffset());
+                buf.putShort((short) m.getLength());
+            }
+        }
+
+        return buf.array();
+    }
+
+    /**
+     * Encode a 0x03 WRITE_MULTI_VAR request.
+     *
+     * <p>
+     * Verified protocol format (from real MRC controller, 2026-06-10):
+     * </p>
+     * <pre>
+     * Request:  [U32 count][StrValue × N]  — <b>NO ValueID</b> (differs from 0x02!)
+     * StrValue: [U8×16 varName][U32 memberCount][ValueMember × M]
+     * ValueMember: [U16 offset][U16 length][U32 value]
+     * Response: no data payload (exec=0x00 on success)
+     * </pre>
+     *
+     * <p>
+     * <b>Important differences from 0x02:</b>
+     * <ul>
+     *   <li>NO ValueID field — header is just [U32 count]</li>
+     *   <li>Each ValueMember includes a U32 value field</li>
+     *   <li>Response has empty data payload</li>
+     * </ul>
+     * </p>
+     *
+     * <h3>Example</h3>
+     * <pre>{@code
+     * List<VarWriteRequest> requests = Arrays.asList(
+     *     new VarWriteRequest("AAA", Arrays.asList(
+     *         new VarWriteMember(0, 2, 333),
+     *         new VarWriteMember(2, 2, 334)
+     *     ))
+     * );
+     * byte[] data = KecongMessageEncoder.encodeWriteMultiVar(requests);
+     * }</pre>
+     *
+     * @param requests list of variable write requests
+     * @return encoded byte array for the 0x03 data payload
+     */
+    public static byte[] encodeWriteMultiVar(List<VarWriteRequest> requests) {
+        if (requests == null || requests.isEmpty()) {
+            throw new IllegalArgumentException("requests must not be empty");
+        }
+
+        // Calculate total size: count(U32) + StrValues (NO ValueID)
+        int totalSize = 4; // count(4)
+        for (VarWriteRequest req : requests) {
+            totalSize += req.getStrValueSize();
+        }
+
+        ByteBuffer buf = ByteBufferUtils.allocate(totalSize);
+        buf.putInt(requests.size());  // U32 count (NO ValueID for 0x03)
+
+        for (VarWriteRequest req : requests) {
+            ByteBufferUtils.putFixedString(buf, req.getVarName(), 16);
+            buf.putInt(req.getMembers().size());
+            for (VarWriteMember m : req.getMembers()) {
+                buf.putShort((short) m.getOffset());
+                buf.putShort((short) m.getLength());
+                buf.putInt(m.getValue());
+            }
+        }
+
+        return buf.array();
     }
 }
