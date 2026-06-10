@@ -24,6 +24,11 @@ import java.util.Objects;
  *   <li>{@code kecong:qrPort} — QR/magnetic navigation UDP port (default: 17800)</li>
  *   <li>{@code kecong:authCode} — Protocol auth code (optional, default: built-in Kecong standard auth code)</li>
  *   <li>{@code kecong:pollInterval} — Status polling interval in ms (default: 100)</li>
+ *   <li>{@code kecong:energySource} — Battery energy source: PROTOCOL | READ_VAR | READ_MULTI_VAR (default: PROTOCOL)</li>
+ *   <li>{@code kecong:energyVarName} — Variable name for READ_VAR / READ_MULTI_VAR mode (e.g. "battery_percent")</li>
+ *   <li>{@code kecong:energyVarOffset} — Byte offset for READ_MULTI_VAR mode (default: 0)</li>
+ *   <li>{@code kecong:energyVarPort} — Channel for var read: NAV | QR (default: NAV)</li>
+ *   <li>{@code kecong:energyConfigPath} — Path to hot-reload JSON config file (optional)</li>
  * </ul>
  *
  * <p>To use with openTCS, register this factory in the Kernel configuration:
@@ -83,7 +88,9 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory, Seri
         String authCode = getProperty(vehicle, "authCode", null);
         int pollInterval = Integer.parseInt(getProperty(vehicle, "pollInterval", "100"));
         boolean autoInit = Boolean.parseBoolean(getProperty(vehicle, "autoInit", "false"));
-        int fixedEnergyLevel = Integer.parseInt(getProperty(vehicle, "fixedEnergyLevel", "0"));
+
+        // Build energy config from vehicle properties
+        KecongEnergyConfig energyConfig = KecongEnergyConfig.fromVehicleProperties(vehicle.getProperties());
 
         if (authCode == null || authCode.isEmpty()) {
             LOG.info("No authCode configured for vehicle '{}', using default auth code", vehicle.getName());
@@ -93,11 +100,11 @@ public class KecongCommAdapterFactory implements VehicleCommAdapterFactory, Seri
             LOG.info("Auto-initialization enabled for vehicle '{}'", vehicle.getName());
         }
 
-        if (fixedEnergyLevel > 0) {
-            LOG.info("Fixed energy level {}% for vehicle '{}'", fixedEnergyLevel, vehicle.getName());
-        }
+        LOG.info("Energy source for '{}': {} (varName={}, varPort={})",
+                vehicle.getName(), energyConfig.getSource(),
+                energyConfig.getVarName(), energyConfig.getVarPort());
 
-        return new KecongCommAdapter(processModel, navHost, navPort, qrPort, qrHost, authCode, pollInterval, autoInit, fixedEnergyLevel);
+        return new KecongCommAdapter(processModel, navHost, navPort, qrPort, qrHost, authCode, pollInterval, autoInit, energyConfig);
     }
 
     @Override

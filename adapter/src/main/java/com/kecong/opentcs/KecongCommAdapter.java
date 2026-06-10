@@ -2,6 +2,8 @@ package com.kecong.opentcs;
 
 import com.kecong.opentcs.protocol.*;
 import com.kecong.opentcs.protocol.model.RobotStatus;
+import com.kecong.opentcs.protocol.model.VarReadRequest;
+import com.kecong.opentcs.protocol.model.VarReadResponse;
 import org.opentcs.data.model.Point;
 import org.opentcs.data.model.Pose;
 import org.opentcs.data.model.Triple;
@@ -39,7 +41,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     private final int navPort, qrPort, pollIntervalMs;
     private final byte[] authCode;
     private final boolean autoInit;
-    private final int fixedEnergyLevel; // 0=use controller value, >0=override
+    private final KecongEnergyConfig energyConfig;
 
     private KecongUdpChannel navChannel, qrChannel;
     private ScheduledExecutorService scheduler;
@@ -64,7 +66,7 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     public KecongCommAdapter(KecongVehicleProcessModel processModel,
                              String navHost, int navPort, int qrPort, String qrHost,
                              String authCodeStr, int pollIntervalMs, boolean autoInit,
-                             int fixedEnergyLevel) {
+                             KecongEnergyConfig energyConfig) {
         this.processModel = Objects.requireNonNull(processModel);
         this.navHost = navHost != null ? navHost : DEFAULT_NAV_HOST;
         this.qrHost = qrHost != null ? qrHost : DEFAULT_QR_HOST;
@@ -79,7 +81,10 @@ public class KecongCommAdapter implements VehicleCommAdapter {
                 (authCodeStr != null && !authCodeStr.isEmpty()) ? "property(" + authCodeStr + ")" : "DEFAULT");
         this.pollIntervalMs = pollIntervalMs > 0 ? pollIntervalMs : DEFAULT_POLL_INTERVAL;
         this.autoInit = autoInit;
-        this.fixedEnergyLevel = fixedEnergyLevel;
+        this.energyConfig = Objects.requireNonNull(energyConfig);
+        LOG.info("电量配置: source={} varName={} varOffset={} varPort={}",
+                energyConfig.getSource(), energyConfig.getVarName(), energyConfig.getVarOffset(),
+                energyConfig.getVarPort());
     }
 
     @Override public void initialize() {
@@ -96,19 +101,19 @@ public class KecongCommAdapter implements VehicleCommAdapter {
     @Override public synchronized void enable() {
         if (!initialized || enabled) return;
         try {
-            navChannel = new KecongUdpChannel(navHost, navPort, authCode, Math.max(pollIntervalMs * 2, 2000));
-            qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, 1000);
+            // 如果 channel 已被注入（测试用），跳过新建；否则按真实网络创建
+            if (navChannel == null)
+                navChannel = new KecongUdpChannel(navHost, navPort, authCode, Math.max(pollIntervalMs * 2, 2000));
+            if (qrChannel == null)
+                qrChannel = new KecongUdpChannel(qrHost, qrPort, authCode, 1000);
             LOG.info("NAV channel: {}:{}, QR channel: {}:{}, authCode[0]=0x{}",
                     navHost, navPort, qrHost, qrPort, String.format("%02X", authCode[0] & 0xFF));
-            // Auto-initialize controller if enabled via vehicle property
             if (autoInit) {
                 initializeController();
             } else {
                 LOG.info("autoInit disabled - assuming controller already in auto mode and localized");
             }
             pollFuture = scheduler.scheduleAtFixedRate(this::pollRobotStatus, pollIntervalMs, pollIntervalMs, TimeUnit.MILLISECONDS);
-            // Subscription (0xB1) not needed for "调度" protocol (0x17 polling)
-            // subscriptionFuture = scheduler.scheduleAtFixedRate(this::refreshSubscription, 0, SUBSCRIPTION_REFRESH_MS, TimeUnit.MILLISECONDS);
             enabled = true;
         } catch (IOException e) { LOG.error("Enable failed", e); }
     }
@@ -144,13 +149,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
 
         try {
             // Handle fork operations via WRITE_VAR (0x00) to QR port
-            // UDP variable names: Forkup/Forkdown/Forkforword/Forkback — BOOL type
+            // UDP variable names: Forkup/Forkdown/Forkforward/Forkback — BOOL type
             if ("LOAD".equalsIgnoreCase(op) || "PICKUP".equalsIgnoreCase(op)) {
                 return startLiftOperation(cmd, "Forkup");
             } else if ("UNLOAD".equalsIgnoreCase(op) || "DROPOFF".equalsIgnoreCase(op)) {
                 return startLiftOperation(cmd, "Forkdown");
             } else if ("FORK_FWD".equalsIgnoreCase(op)) {
-                return startLiftOperation(cmd, "Forkforword");
+                return startLiftOperation(cmd, "Forkforward");
             } else if ("FORK_REV".equalsIgnoreCase(op)) {
                 return startLiftOperation(cmd, "Forkback");
             }
@@ -493,9 +498,13 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             }
 
             processModel.setState(translateState(st));
-            int energy = fixedEnergyLevel > 0 ? fixedEnergyLevel : (int) (st.getBatteryPercent() * 100);
-            processModel.setEnergyLevel(energy);
+            processModel.setEnergyLevel(readEnergyLevel(st));
             updateKecongProps(st);
+
+            // 热加载检查：有 JSON 配置文件时检查 mtime
+            if (energyConfig.getConfigFilePath() != null) {
+                energyConfig.reloadFromJsonFile();
+            }
 
             if (st.hasError()) {
                 LOG.warn("Robot errors: {}", Arrays.stream(st.getAbnormalEvents())
@@ -513,6 +522,56 @@ public class KecongCommAdapter implements VehicleCommAdapter {
         processModel.setBatteryPercent(st.getBatteryPercent());
         processModel.setChargeStatus(st.getChargeStatus());
         if (navChannel != null) processModel.setCmdSequence(navChannel.getSequenceNumber());
+    }
+
+    // --- 电量读取 (package-private for tests) ---
+
+    int readEnergyLevel(RobotStatus st) {
+        try {
+            switch (energyConfig.getSource()) {
+                case READ_VAR:       return readEnergyFromReadVar();
+                case READ_MULTI_VAR: return readEnergyFromMultiVar();
+                default:             return st != null ? (int) (st.getBatteryPercent() * 100) : -1;
+            }
+        } catch (Exception e) {
+            LOG.warn("电量读取失败 ({}): {}", energyConfig.getSource(), e.getMessage());
+            return -1;
+        }
+    }
+
+    int readEnergyFromReadVar() throws IOException {
+        byte[] data = getVarChannel().sendAndGetData(KecongCommandCode.CMD_READ_VAR,
+                KecongMessageEncoder.encodeReadVar(energyConfig.getVarName()));
+        if (data == null) return -1;
+        byte[] value = KecongMessageDecoder.decodeReadVarResponse(data);
+        return value != null ? floatToEnergy(bytesToFloatLE(value)) : -1;
+    }
+
+    int readEnergyFromMultiVar() throws IOException {
+        VarReadRequest req = new VarReadRequest(energyConfig.getVarName(), energyConfig.getVarOffset(), 4);
+        byte[] data = getVarChannel().sendAndGetData(KecongCommandCode.CMD_READ_MULTI_VAR,
+                KecongMessageEncoder.encodeReadMultiVar(Collections.singletonList(req), 0));
+        if (data == null) return -1;
+        VarReadResponse resp = VarReadResponse.decode(data);
+        return resp != null && resp.getValues().length >= 4
+                ? floatToEnergy(Float.intBitsToFloat(resp.getInt(0))) : -1;
+    }
+
+    KecongUdpChannel getVarChannel() {
+        return "QR".equalsIgnoreCase(energyConfig.getVarPort()) ? qrChannel : navChannel;
+    }
+
+    /** 将 4 字节小端序解析为 IEEE 754 FLOAT */
+    private static float bytesToFloatLE(byte[] bytes) {
+        if (bytes == null || bytes.length < 4) return 0f;
+        int bits = 0;
+        for (int i = 0; i < 4; i++) bits |= (bytes[i] & 0xFF) << (i * 8);
+        return Float.intBitsToFloat(bits);
+    }
+
+    /** FLOAT 电量值 → 四舍五入 int（如 99.8f → 100） */
+    private static int floatToEnergy(float f) {
+        return Math.round(f);
     }
 
     private Vehicle.State translateState(RobotStatus st) {

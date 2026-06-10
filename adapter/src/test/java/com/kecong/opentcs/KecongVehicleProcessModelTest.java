@@ -146,4 +146,10 @@ class KecongVehicleProcessModelTest {
         assertEquals("", model.getErrorCodes());
         assertEquals(0, model.getCmdSequence());
     }
+
+    @Test @DisplayName("set/get vehicle service")
+    void testVehicleService() {
+        assertNull(model.getVehicleService());
+        // Cannot mock InternalVehicleService easily — just verify null path
+    }
 }
