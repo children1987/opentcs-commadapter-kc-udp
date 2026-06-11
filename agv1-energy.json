@@ -1,6 +1,0 @@
-{
-  "energySource": "READ_MULTI_VAR",
-  "energyVarName": "Screen",
-  "energyVarOffset": 36,
-  "energyVarPort": "QR"
-}

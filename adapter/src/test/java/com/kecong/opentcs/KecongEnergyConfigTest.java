@@ -2,15 +2,10 @@ package com.kecong.opentcs;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 @DisplayName("KecongEnergyConfig")
 class KecongEnergyConfigTest {
@@ -25,7 +20,6 @@ class KecongEnergyConfigTest {
         assertEquals("NAV", c.getVarPort());
         assertEquals(0, c.getVarOffset());
         assertNull(c.getVarName());
-        assertNull(c.getConfigFilePath());
     }
 
     @Test
@@ -99,15 +93,6 @@ class KecongEnergyConfigTest {
     }
 
     @Test
-    @DisplayName("Parse energyConfigPath")
-    void testConfigPath() {
-        KecongEnergyConfig c = KecongEnergyConfig.fromVehicleProperties(
-                Map.of("kecong:energyConfigPath", "/path/to/config.json"));
-        assertNotNull(c.getConfigFilePath());
-        assertEquals("/path/to/config.json", c.getConfigFilePath().toString().replace('\\', '/'));
-    }
-
-    @Test
     @DisplayName("Empty energySource treated as PROTOCOL")
     void testEmptySourceDefaults() {
         KecongEnergyConfig c = KecongEnergyConfig.fromVehicleProperties(
@@ -124,120 +109,6 @@ class KecongEnergyConfigTest {
         KecongEnergyConfig c = KecongEnergyConfig.fromVehicleProperties(props);
         assertEquals(KecongEnergyConfig.Source.PROTOCOL, c.getSource());
         assertEquals("unused_var", c.getVarName()); // stored but ignored
-    }
-
-    // ---- JSON hot-reload ----
-
-    @Test
-    @DisplayName("reloadFromJsonFile returns false when no config path set")
-    void testReloadNoPath() {
-        KecongEnergyConfig c = KecongEnergyConfig.fromVehicleProperties(Map.of());
-        assertFalse(c.reloadFromJsonFile());
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile returns false for non-existent file")
-    void testReloadFileNotFound() {
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(Path.of("/nonexistent/path/config.json"));
-        assertFalse(c.reloadFromJsonFile());
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile parses valid JSON")
-    void testReloadValidJson(@TempDir Path tempDir) throws IOException {
-        Path jsonFile = tempDir.resolve("energy-config.json");
-        String json = "{\"energySource\":\"READ_VAR\",\"energyVarName\":\"my_battery\",\"energyVarOffset\":4,\"energyVarPort\":\"QR\"}";
-        Files.write(jsonFile, json.getBytes(StandardCharsets.UTF_8));
-
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(jsonFile);
-        // Defaults
-        assertEquals(KecongEnergyConfig.Source.PROTOCOL, c.getSource());
-
-        boolean changed = c.reloadFromJsonFile();
-        assertTrue(changed);
-        assertEquals(KecongEnergyConfig.Source.READ_VAR, c.getSource());
-        assertEquals("my_battery", c.getVarName());
-        assertEquals(4, c.getVarOffset());
-        assertEquals("QR", c.getVarPort());
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile returns false if unchanged (same mtime)")
-    void testReloadSameMtime(@TempDir Path tempDir) throws IOException {
-        Path jsonFile = tempDir.resolve("energy-config.json");
-        Files.write(jsonFile, "{\"energySource\": \"READ_VAR\"}".getBytes(StandardCharsets.UTF_8));
-
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(jsonFile);
-
-        assertTrue(c.reloadFromJsonFile());  // first load
-        assertFalse(c.reloadFromJsonFile()); // same mtime, no reload
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile with partial JSON only overrides specified fields")
-    void testReloadPartialJson(@TempDir Path tempDir) throws IOException {
-        Path jsonFile = tempDir.resolve("energy-config.json");
-
-        // Set initial values
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setSource(KecongEnergyConfig.Source.READ_MULTI_VAR);
-        c.setVarName("B2GW");
-        c.setVarOffset(24);
-        c.setVarPort("NAV");
-        c.setConfigFilePath(jsonFile);
-
-        // Override only source and varName
-        Files.write(jsonFile, "{\"energySource\":\"PROTOCOL\",\"energyVarName\":\"new_var\"}".getBytes(StandardCharsets.UTF_8));
-
-        assertTrue(c.reloadFromJsonFile());
-        assertEquals(KecongEnergyConfig.Source.PROTOCOL, c.getSource());
-        assertEquals("new_var", c.getVarName());
-        assertEquals(24, c.getVarOffset());   // unchanged
-        assertEquals("NAV", c.getVarPort());  // unchanged
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile with invalid source keeps old value")
-    void testReloadInvalidSource(@TempDir Path tempDir) throws IOException {
-        Path jsonFile = tempDir.resolve("energy-config.json");
-        Files.write(jsonFile, "{\"energySource\": \"BAD\"}".getBytes(StandardCharsets.UTF_8));
-
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(jsonFile);
-        c.setSource(KecongEnergyConfig.Source.READ_VAR);
-
-        c.reloadFromJsonFile();
-        // Invalid source in JSON should be ignored, old value preserved
-        assertEquals(KecongEnergyConfig.Source.READ_VAR, c.getSource());
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile with empty JSON does not crash")
-    void testReloadEmptyJson(@TempDir Path tempDir) throws IOException {
-        Path jsonFile = tempDir.resolve("energy-config.json");
-        Files.write(jsonFile, "{}".getBytes(StandardCharsets.UTF_8));
-
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(jsonFile);
-
-        assertTrue(c.reloadFromJsonFile());
-        assertEquals(KecongEnergyConfig.Source.PROTOCOL, c.getSource()); // unchanged
-    }
-
-    @Test
-    @DisplayName("reloadFromJsonFile with negative varOffset")
-    void testReloadNegativeOffset(@TempDir Path tempDir) throws IOException {
-        Path jsonFile = tempDir.resolve("energy-config.json");
-        Files.write(jsonFile, "{\"energyVarOffset\": -1}".getBytes(StandardCharsets.UTF_8));
-
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(jsonFile);
-
-        assertTrue(c.reloadFromJsonFile());
-        assertEquals(-1, c.getVarOffset());
     }
 
     // ---- setters/getters ----
@@ -258,9 +129,6 @@ class KecongEnergyConfigTest {
 
         c.setVarPort("QR");
         assertEquals("QR", c.getVarPort());
-
-        c.setConfigFilePath(Path.of("/tmp/cfg.json"));
-        assertEquals(Path.of("/tmp/cfg.json"), c.getConfigFilePath());
     }
 
     @Test
@@ -285,13 +153,6 @@ class KecongEnergyConfigTest {
         assertNotNull(KecongEnergyConfig.Source.valueOf("PROTOCOL"));
         assertNotNull(KecongEnergyConfig.Source.valueOf("READ_VAR"));
         assertNotNull(KecongEnergyConfig.Source.valueOf("READ_MULTI_VAR"));
-    }
-
-    @Test @DisplayName("reloadFromJsonFile IOException returns false")
-    void testReloadIoError(@TempDir Path tmp) {
-        KecongEnergyConfig c = new KecongEnergyConfig();
-        c.setConfigFilePath(tmp); // directory not file → IOException on read
-        assertFalse(c.reloadFromJsonFile());
     }
 
     @Test @DisplayName("all setter paths full coverage")

@@ -501,11 +501,6 @@ public class KecongCommAdapter implements VehicleCommAdapter {
             processModel.setEnergyLevel(readEnergyLevel(st));
             updateKecongProps(st);
 
-            // 热加载检查：有 JSON 配置文件时检查 mtime
-            if (energyConfig.getConfigFilePath() != null) {
-                energyConfig.reloadFromJsonFile();
-            }
-
             if (st.hasError()) {
                 LOG.warn("Robot errors: {}", Arrays.stream(st.getAbnormalEvents())
                         .filter(ab -> ab.isError()).map(ab -> String.format("0x%04X", ab.getEventCode()))

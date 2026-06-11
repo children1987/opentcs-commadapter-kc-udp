@@ -146,17 +146,4 @@ class KecongCommAdapterFactoryTest {
         assertNotNull(adapter.getProcessModel());
     }
 
-    @Test
-    @DisplayName("getAdapterFor with energy hot-reload config path")
-    void testGetAdapterWithEnergyConfigPath() {
-        factory.initialize();
-        Map<String, String> props = new HashMap<>();
-        props.put("kecong:navHost", "192.168.1.1");
-        props.put("kecong:energySource", "PROTOCOL");
-        props.put("kecong:energyConfigPath", "/tmp/kecong-energy.json");
-
-        Vehicle v = mockVehicle("AGV-HR", props);
-        VehicleCommAdapter adapter = factory.getAdapterFor(v);
-        assertNotNull(adapter);
-    }
 }

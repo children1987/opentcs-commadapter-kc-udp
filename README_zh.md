@@ -131,7 +131,6 @@ cp target/kecong-opentcs-driver-1.0.0.jar /path/to/opentcs/kernel/lib/
 | `kecong:energyVarName` | READ_VAR/MULTI_VAR 时必填 | — | 控制器变量名（如 `battery_percent`、`B2GW`） |
 | `kecong:energyVarOffset` | 否 | `0` | 仅 READ_MULTI_VAR：电量值在响应中的字节偏移 |
 | `kecong:energyVarPort` | 否 | `NAV` | 变量读取端口：`NAV`（17804）或 `QR`（17800） |
-| `kecong:energyConfigPath` | 否 | — | 热加载 JSON 配置文件路径（可选，见下方说明） |
 
 ### 5. 路点命名约定
 
@@ -191,42 +190,6 @@ cp target/kecong-opentcs-driver-1.0.0.jar /path/to/opentcs/kernel/lib/
 
 **工作原理：** 驱动发送 `0x02 READ_MULTI_VAR` 请求读取 `B2GW[offset:4]`（4 字节 IEEE 754 浮点数），从 `VarReadResponse` 中提取值，四舍五入为电量百分比。
 
-### 热加载配置（不重启 Kernel）
-
-设置 `kecong:energyConfigPath` 指向一个 JSON 配置文件，驱动会每 ~5 秒检查文件是否修改。若文件有变化，自动重新加载配置，无需重启 Kernel。
-
-**JSON 配置文件格式：**
-
-```json
-{
-  "energySource": "READ_VAR",
-  "energyVarName": "battery_percent",
-  "energyVarOffset": 0,
-  "energyVarPort": "QR"
-}
-```
-
-所有字段均为可选 —— 仅需要覆盖的字段才需写出。例如，仅切换电量来源：
-
-```json
-{
-  "energySource": "PROTOCOL"
-}
-```
-
-**使用示例：**
-
-```xml
-<vehicle name="AGV-001" ...>
-    <property key="kecong:energySource" value="PROTOCOL"/>
-    <property key="kecong:energyConfigPath" value="C:\opentcs\config\agv1-energy.json"/>
-</vehicle>
-```
-
-修改 `agv1-energy.json` 文件内容，驱动将在数秒内自动切换电量读取策略，无需重启 Kernel。
-
-> **注意：** 热加载仅覆盖 `KecongEnergyConfig` 中的字段，不影响 Network/IP/Port/AuthCode 等基础连接配置（这些仍需通过 vehicle properties 配置并重启 Kernel）。
-
 ### 配置示例汇总
 
 ```xml
@@ -235,13 +198,12 @@ cp target/kecong-opentcs-driver-1.0.0.jar /path/to/opentcs/kernel/lib/
     <property key="kecong:navHost" value="192.168.100.178"/>
 </vehicle>
 
-<!-- 示例 2：读取单变量 + 热加载 -->
+<!-- 示例 2：读取单变量 -->
 <vehicle name="AGV-002" ...>
     <property key="kecong:navHost" value="192.168.100.178"/>
     <property key="kecong:energySource" value="READ_VAR"/>
     <property key="kecong:energyVarName" value="battery_level"/>
     <property key="kecong:energyVarPort" value="QR"/>
-    <property key="kecong:energyConfigPath" value="C:\opentcs\config\agv2-energy.json"/>
 </vehicle>
 
 <!-- 示例 3：批量读取变量 -->

@@ -9,13 +9,11 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
 
 @DisplayName("KecongCommAdapter — 电量读取")
 class KecongCommAdapterEnergyTest {
@@ -188,34 +186,4 @@ class KecongCommAdapterEnergyTest {
     @Test @DisplayName("getVarChannel QR") void testChannelQr() { energyConfig.setVarPort("QR"); assertSame(mockQrChannel, adapter.getVarChannel()); }
     @Test @DisplayName("getVarChannel unknown → NAV") void testChannelUnknown() { energyConfig.setVarPort("X"); assertSame(mockNavChannel, adapter.getVarChannel()); }
 
-    // ---- hot-reload ----
-
-    @Test @DisplayName("Hot-reload non-existent file — no crash")
-    void testHotReloadMissingFile() { energyConfig.setConfigFilePath(Path.of("/no/such/file")); assertDoesNotThrow(() -> adapter.readEnergyLevel(new RobotStatus() {{ setBatteryPercent(0.5f); }})); }
-
-    @Test @DisplayName("Hot-reload JSON changes source")
-    void testHotReloadChangesSource(@TempDir Path tmp) throws Exception {
-        Path f = tmp.resolve("e.json");
-        Files.write(f, "{\"energySource\":\"READ_VAR\",\"energyVarName\":\"bat\"}".getBytes(StandardCharsets.UTF_8));
-        energyConfig.setConfigFilePath(f);
-        assertEquals(KecongEnergyConfig.Source.PROTOCOL, energyConfig.getSource());
-        assertTrue(energyConfig.reloadFromJsonFile());
-        assertEquals(KecongEnergyConfig.Source.READ_VAR, energyConfig.getSource());
-        assertEquals("bat", energyConfig.getVarName());
-    }
-
-    @Test @DisplayName("Full dispatch: PROTOCOL → READ_VAR after hot-reload")
-    void testFullHotReloadDispatch(@TempDir Path tmp) throws Exception {
-        RobotStatus st = new RobotStatus(); st.setBatteryPercent(0.9f);
-        assertEquals(90, adapter.readEnergyLevel(st)); // PROTOCOL
-
-        Path f = tmp.resolve("e.json");
-        Files.write(f, "{\"energySource\":\"READ_VAR\",\"energyVarName\":\"bat\"}".getBytes(StandardCharsets.UTF_8));
-        energyConfig.setConfigFilePath(f);
-        energyConfig.reloadFromJsonFile();
-
-        when(mockNavChannel.sendAndGetData(eq(KecongCommandCode.CMD_READ_VAR), any()))
-                .thenReturn(readVarResponse("bat", 77.5f));
-        assertEquals(78, adapter.readEnergyLevel(null)); // 77.5 rounds to 78
-    }
 }

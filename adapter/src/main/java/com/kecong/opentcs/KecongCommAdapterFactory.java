@@ -28,7 +28,6 @@ import java.util.Objects;
  *   <li>{@code kecong:energyVarName} — Variable name for READ_VAR / READ_MULTI_VAR mode (e.g. "battery_percent")</li>
  *   <li>{@code kecong:energyVarOffset} — Byte offset for READ_MULTI_VAR mode (default: 0)</li>
  *   <li>{@code kecong:energyVarPort} — Channel for var read: NAV | QR (default: NAV)</li>
- *   <li>{@code kecong:energyConfigPath} — Path to hot-reload JSON config file (optional)</li>
  * </ul>
  *
  * <p>To use with openTCS, register this factory in the Kernel configuration:
