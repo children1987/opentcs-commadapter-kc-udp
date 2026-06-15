@@ -1,6 +1,6 @@
 import zipfile, os
 
-adapter = 'E:/workspace/opentcs/commadapters/opentcs-commadapter-kc-udp'
+adapter = os.path.dirname(os.path.abspath(__file__))
 build = os.path.join(adapter, 'build', 'classes_v2')
 out = os.path.join(adapter, 'build', 'kecong-opentcs-adapter-1.0.0.jar')
 
