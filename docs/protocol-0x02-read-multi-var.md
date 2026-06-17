@@ -88,10 +88,10 @@ ValueMember:
 
 ```bash
 # 读取变量成员
-python kc-tools/kc-inspect.py --read-var AAA 0 2 2 2
+python tools/kc-tools/kc-inspect.py --read-var AAA 0 2 2 2
 
 # 写入变量成员（自动回读验证）
-python kc-tools/kc-inspect.py --write-var AAA 0 2 333 2 2 334
+python tools/kc-tools/kc-inspect.py --write-var AAA 0 2 333 2 2 334
 ```
 
 ## 4. Java 实现
@@ -154,4 +154,4 @@ NAV: `192.168.100.178:17804`，QR: `192.168.100.200:17800`
 | [VarWriteMember.java](../protocol/src/main/java/com/kecong/opentcs/protocol/model/VarWriteMember.java) | 0x03 成员 |
 | [KecongMessageEncoder.java](../protocol/src/main/java/com/kecong/opentcs/protocol/KecongMessageEncoder.java) | 编解码 |
 | [KecongReadMultiVarTest.java](../protocol/src/test/java/com/kecong/opentcs/protocol/KecongReadMultiVarTest.java) | 单元测试 |
-| [kc-inspect.py](../../kc-tools/kc-inspect.py) | Python 调试工具 |
+| [kc-inspect.py](../../tools/kc-tools/kc-inspect.py) | Python 调试工具 |
