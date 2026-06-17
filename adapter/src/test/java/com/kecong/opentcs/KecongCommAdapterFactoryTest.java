@@ -130,6 +130,23 @@ class KecongCommAdapterFactoryTest {
     }
 
     @Test
+    @DisplayName("initialize when already initialized is idempotent")
+    void testInitializeWhenAlreadyInitialized() {
+        factory.initialize();
+        assertTrue(factory.isInitialized());
+        factory.initialize(); // second call should return early
+        assertTrue(factory.isInitialized());
+    }
+
+    @Test
+    @DisplayName("terminate when not initialized is safe")
+    void testTerminateWhenNotInitialized() {
+        assertFalse(factory.isInitialized());
+        factory.terminate(); // should not throw
+        assertFalse(factory.isInitialized());
+    }
+
+    @Test
     @DisplayName("getAdapterFor with energy config via vehicle props")
     void testGetAdapterWithEnergyConfig() {
         factory.initialize();

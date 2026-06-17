@@ -24,4 +24,11 @@ class KecongAdapterModuleTest {
         KecongAdapterModule module = new KecongAdapterModule();
         assertTrue(module instanceof org.opentcs.customizations.kernel.KernelInjectionModule);
     }
+
+    @Test
+    @DisplayName("getVehicleService returns null when provider not set")
+    void testGetVehicleServiceNullProvider() {
+        // Static field vehicleServiceProvider is null before configure() is called
+        assertNull(KecongAdapterModule.getVehicleService());
+    }
 }

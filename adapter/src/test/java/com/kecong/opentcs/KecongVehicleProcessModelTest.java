@@ -152,4 +152,14 @@ class KecongVehicleProcessModelTest {
         assertNull(model.getVehicleService());
         // Cannot mock InternalVehicleService easily — just verify null path
     }
+
+    @Test
+    @DisplayName("setVehicleService stores service reference")
+    void testSetVehicleService() {
+        // Use a mock to cover the setter path
+        org.opentcs.components.kernel.services.InternalVehicleService mockSvc =
+                org.mockito.Mockito.mock(org.opentcs.components.kernel.services.InternalVehicleService.class);
+        model.setVehicleService(mockSvc);
+        assertSame(mockSvc, model.getVehicleService());
+    }
 }

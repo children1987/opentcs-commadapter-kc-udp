@@ -471,6 +471,91 @@ class CoverageGapFillTest {
         }
     }
 
+    // ── KecongUdpChannel: createNavChannel(ip, timeoutMs) with default auth ──
+
+    @Test
+    @DisplayName("KecongUdpChannel: createNavChannel(String, int) with default auth")
+    void testCreateNavChannelDefaultAuth() throws Exception {
+        try (var mock = org.mockito.Mockito.mockConstruction(java.net.DatagramSocket.class)) {
+            KecongUdpChannel channel = KecongUdpChannel.createNavChannel("192.168.1.1", 2000);
+            assertNotNull(channel);
+            assertFalse(channel.isClosed());
+            java.net.DatagramSocket sockMock = mock.constructed().get(0);
+            org.mockito.Mockito.verify(sockMock).setSoTimeout(2000);
+        }
+    }
+
+    // ── KecongMessageDecoder.taskStateToAgvState: WAIT(1) → IDLE(0) ──
+
+    @Test
+    @DisplayName("decodeRunStatus: task state WAIT(1) maps to IDLE(0)")
+    void testDecodeRunStatusTaskStateWait() {
+        byte[] data = buildRunStatusData(1);
+        var st = KecongMessageDecoder.decodeRunStatus(data);
+        assertNotNull(st);
+        assertEquals(1, st.getNavTaskState());
+        assertEquals(0, st.getAgvState()); // WAIT → IDLE
+    }
+
+    // ── KecongMessageDecoder.decodeRobotStatus: abnormalSize > 0, insufficient remaining ──
+
+    @Test
+    @DisplayName("decodeRobotStatus: abnormalSize > 0 but buf.remaining() < abnormalSize*12")
+    void testDecodeRobotStatusAbnormalInsufficientRemaining() {
+        // Build a buffer with abnormalSize=10 (needs 120 bytes), but only ~88 bytes remaining
+        // after header+location+running+task+battery
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(128)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        buf.put((byte) 10); // abnormalSize=10 (needs 10*12=120 bytes)
+        buf.put((byte) 0);  // actionSize=0
+        buf.putShort((short) 0);
+        // Fill minimal location+running+task+battery (84 bytes)
+        for (int i = 0; i < 21; i++) buf.putInt(0);
+        // remaining = 128 - 4 - 84 = 40 < 120, so the condition fails
+        var status = KecongMessageDecoder.decodeRobotStatus(buf.array());
+        assertNotNull(status);
+    }
+
+    // ── KecongMessageDecoder.decodeRobotStatus: actionSize > 0, insufficient remaining ──
+
+    @Test
+    @DisplayName("decodeRobotStatus: actionSize > 0 but buf.remaining() < actionSize*12")
+    void testDecodeRobotStatusActionInsufficientRemaining() {
+        java.nio.ByteBuffer buf = java.nio.ByteBuffer.allocate(128)
+                .order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        buf.put((byte) 0);  // abnormalSize=0
+        buf.put((byte) 10); // actionSize=10 (needs 10*12=120 bytes)
+        buf.putShort((short) 0);
+        for (int i = 0; i < 21; i++) buf.putInt(0);
+        // remaining = 128 - 4 - 84 = 40 < 120
+        var status = KecongMessageDecoder.decodeRobotStatus(buf.array());
+        assertNotNull(status);
+    }
+
+    // ── VarReadRequest.equals: two different objects with same varName and members ──
+
+    @Test
+    @DisplayName("VarReadRequest.equals: different objects with same name and members")
+    void testVarReadRequestEqualsSameMembersDifferentObject() {
+        VarReadRequest r1 = new VarReadRequest("AAA", 0, 2);
+        VarReadRequest r2 = new VarReadRequest("AAA", 0, 2);
+        assertTrue(r1.equals(r2));
+        assertTrue(r2.equals(r1));
+        assertEquals(r1.hashCode(), r2.hashCode());
+    }
+
+    // ── VarWriteRequest.equals: two different objects with same varName and members ──
+
+    @Test
+    @DisplayName("VarWriteRequest.equals: different objects with same name and members")
+    void testVarWriteRequestEqualsSameMembersDifferentObject() {
+        VarWriteRequest r1 = new VarWriteRequest("AAA", 0, 2, 100);
+        VarWriteRequest r2 = new VarWriteRequest("AAA", 0, 2, 100);
+        assertTrue(r1.equals(r2));
+        assertTrue(r2.equals(r1));
+        assertEquals(r1.hashCode(), r2.hashCode());
+    }
+
     // ── Utility ──
 
     private static byte[] buildRunStatusData(int taskState) {
