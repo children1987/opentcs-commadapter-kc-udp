@@ -455,6 +455,18 @@ java -Dkecong:navHost=192.168.1.100 -Dkecong:authCode=YOUR_AUTH_CODE ...
 - 定位是否完成？（`0xAF` → localizationStatus=3）
 - 是否有正在执行的任务？（`0xAF` → orderId≠0）
 
+### 车辆显示"Partially"（部分集成），无法接收运输任务
+
+**现象：** 在 OperationsDesk 中，车辆的集成级别显示为"Partially"（`TO_BE_RESPECTED`）而非"Fully"（`TO_BE_UTILIZED`）。无法向车辆派发运输任务。
+
+**根因：** `kernelapp.autoEnableDriversOnStartup` 为 `false`（默认值）。适配器虽然被创建并挂载到车辆，但 `enable()` 从未被调用 — UDP 通道未开启，状态轮询未启动。适配器没有机会上报初始位置并请求 `TO_BE_UTILIZED`。
+
+**修复：** 在 `config/opentcs-kernel.properties` 中设置 `kernelapp.autoEnableDriversOnStartup = true` 并重启 Kernel。
+
+或者，在 OperationsDesk 中手动启用车辆：右键车辆 → **Change integration level** → 选择 **...to utilize this vehicle for transport orders**。
+
+**验证：** 检查 Kernel 日志中是否出现 `"Requested integration level TO_BE_UTILIZED"` 和 `"Vehicle's integration level changes: ... TO_BE_RESPECTED -> TO_BE_UTILIZED"`。如果 Kernel 启动后这两条日志都未出现，说明适配器的 `enable()` 从未被调用。
+
 ## 参考资料
 
 - [openTCS 文档](https://www.opentcs.org/docs/)

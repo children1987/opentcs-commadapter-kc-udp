@@ -391,6 +391,18 @@ The controller can't execute the command in its current state. Check:
 - Is localization complete? (`0xAF` → localizationStatus=3)
 - Is there an active task? (`0xAF` → orderId≠0)
 
+### Vehicle shows "Partially" integrated, cannot receive transport orders
+
+**Symptom:** In OperationsDesk, the vehicle's integration level is shown as "Partially" (`TO_BE_RESPECTED`) instead of "Fully" (`TO_BE_UTILIZED`). Transport orders cannot be dispatched to the vehicle.
+
+**Root cause:** `kernelapp.autoEnableDriversOnStartup` is `false` (the default). The adapter is created and attached to the vehicle, but `enable()` is never called — the UDP channels are never opened, and the status polling loop never starts. The adapter never gets a chance to report the initial position and request `TO_BE_UTILIZED`.
+
+**Fix:** Set `kernelapp.autoEnableDriversOnStartup = true` in `config/opentcs-kernel.properties` and restart the Kernel.
+
+Alternatively, manually enable the vehicle in OperationsDesk: right-click the vehicle → **Change integration level** → select **...to utilize this vehicle for transport orders**.
+
+**How to verify:** Check the Kernel log for `"Requested integration level TO_BE_UTILIZED"` and `"Vehicle's integration level changes: ... TO_BE_RESPECTED -> TO_BE_UTILIZED"`. If neither appears after Kernel startup, the adapter's `enable()` was never called.
+
 ## References
 
 - [openTCS Documentation](https://www.opentcs.org/docs/)
