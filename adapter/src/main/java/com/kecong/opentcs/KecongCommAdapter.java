@@ -294,67 +294,51 @@ public class KecongCommAdapter implements VehicleCommAdapter {
      * Also updates the kernel vehicle position via the injected vehicle service.
      */
     private String resolvePoint(long px, long py) {
-        String[][] POINTS = {
-            {"00", "0", "0"},
-            {"01", "2000", "0"},
-            {"02", "4000", "0"},
-            {"03", "4350", "0"},
-            {"04", "4430", "680"},
-            {"05", "4400", "4000"},
-            {"06", "4000", "4000"},
-            {"07", "3985", "680"},
-            {"08", "6000", "0"},
-            {"09", "6450", "0"},
-            {"10", "6375", "675"},
-            {"11", "6450", "4050"},
-            {"12", "6000", "4000"},
-            {"13", "5925", "675"},
-            {"14", "8000", "0"},
-            {"15", "8030", "-830"},
-            {"16", "8000", "-4000"},
-            {"17", "8400", "-4000"},
-            {"18", "8475", "-830"},
-            {"19", "8400", "0"},
-            {"20", "10000", "0"},
-            {"21", "9975", "-825"},
-            {"22", "10000", "-4000"},
-            {"23", "10350", "-4050"},
-            {"24", "10425", "-975"},
-            {"25", "10350", "0"},
-            {"26", "12000", "0"}
-        };
-        String best = null;
-        double bestDist = Double.MAX_VALUE;
-        for (String[] pt : POINTS) {
-            long dx = px - Long.parseLong(pt[1]);
-            long dy = py - Long.parseLong(pt[2]);
-            double dist = Math.sqrt((double)(dx * dx + dy * dy));
-            if (dist < bestDist) {
-                bestDist = dist;
-                best = pt[0];
-            }
+        var vc = ((KecongVehicleProcessModel) processModel).getVehicleService();
+        if (vc == null) {
+            LOG.debug("resolvePoint: vehicleService not available");
+            return null;
         }
-        if (best != null && bestDist <= 100000) {
-            // Also update kernel vehicle position
-            try {
-                var vc = ((KecongVehicleProcessModel) processModel).getVehicleService();
-                LOG.info("resolvePoint: px={} py={} best={} vc={}", px, py, best, vc != null ? "OK" : "NULL");
-                if (vc != null) {
-                    var pt = vc.fetch(org.opentcs.data.model.Point.class, best);
-                    LOG.info("resolvePoint: fetch Point({}) = {}", best, pt.isPresent() ? "found" : "NOT FOUND");
-                    if (pt.isPresent()) {
+        try {
+            java.util.Set<org.opentcs.data.model.Point> allPoints =
+                    vc.fetch(org.opentcs.data.model.Point.class);
+            if (allPoints == null || allPoints.isEmpty()) {
+                LOG.debug("resolvePoint: no points in model");
+                return null;
+            }
+            String best = null;
+            double bestDist = Double.MAX_VALUE;
+            for (org.opentcs.data.model.Point pt : allPoints) {
+                var pos = pt.getPose().getPosition();
+                long dx = px - pos.getX();
+                long dy = py - pos.getY();
+                double dist = Math.sqrt((double)(dx * dx + dy * dy));
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = pt.getName();
+                }
+            }
+            if (best != null && bestDist <= 100000) {
+                // Update kernel vehicle position to the resolved point
+                try {
+                    var ptRef = vc.fetch(org.opentcs.data.model.Point.class, best);
+                    if (ptRef.isPresent()) {
                         vc.updateVehiclePosition(
                             processModel.getReference(),
-                            pt.get().getReference());
-                        LOG.info("Position resolved: {} at point {}", poseToString(px, py), best);
+                            ptRef.get().getReference());
+                        LOG.debug("Position resolved: {} at point {} (dist={}mm)",
+                                poseToString(px, py), best, (long) bestDist);
                     }
+                } catch (Exception e) {
+                    LOG.warn("Failed to update kernel vehicle position: {}", e.getMessage(), e);
                 }
-            } catch (Exception e) {
-                LOG.warn("Failed to update kernel vehicle position: {}", e.getMessage(), e);
+                return best;
             }
-            return best;
+            LOG.debug("resolvePoint: px={} py={} best={} bestDist={} - NO MATCH",
+                    px, py, best, (long) bestDist);
+        } catch (Exception e) {
+            LOG.warn("resolvePoint failed: {}", e.getMessage(), e);
         }
-        LOG.info("resolvePoint: px={} py={} best={} bestDist={} - NO MATCH", px, py, best, bestDist);
         return null;
     }
 
