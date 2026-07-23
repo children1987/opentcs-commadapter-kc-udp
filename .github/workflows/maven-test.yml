@@ -42,7 +42,7 @@ jobs:
           path: protocol/target/site/jacoco/
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         if: matrix.java == '17'
         with:
           files: protocol/target/site/jacoco/jacoco.xml
